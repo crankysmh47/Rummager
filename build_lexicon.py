@@ -1,4 +1,6 @@
 import json
+import pickle
+
 from tqdm import tqdm  # optional, for progress bar
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
@@ -59,6 +61,14 @@ def save_lexicon(lexicon, file_path):
     with open(file_path, 'w', encoding='utf-8') as f:
         for word, idx in lexicon.items():
             f.write(f"{idx}\t{word}\n")
+
+def save_lexicon_binary(lexicon, file_path):
+    with open(file_path, 'wb') as f:
+        pickle.dump(lexicon, f)
+
+def load_lexicon_binary(file_path):
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
 
 
 if __name__ == "__main__":

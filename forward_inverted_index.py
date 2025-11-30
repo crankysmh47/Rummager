@@ -1,21 +1,12 @@
 import os
+import pickle
+
 from collections import defaultdict
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-import string
+from build_lexicon import tokenize
 
 # ---------------------------------------------------------
-# Shared tokenizer (same as lexicon code)
+# Forward Index
 # ---------------------------------------------------------
-
-stop_words = set(stopwords.words("english"))
-translator = str.maketrans('', '', string.punctuation)
-
-def tokenize(text):
-    text = text.lower()
-    text = text.translate(translator)
-    tokens = word_tokenize(text)
-    return [t for t in tokens if t.isalpha() and t not in stop_words]
 
 # ---------------------------------------------------------
 # Forward Index
@@ -58,6 +49,14 @@ def save_forward_index(forward_index, file_path):
             pairs = [f"{wid}:{pos}" for (wid, pos) in entries]
             f.write(f"{doc_id}\t{','.join(pairs)}\n")
 
+def save_forward_index_binary(forward_index, file_path):
+    with open(file_path, 'wb') as f:
+        pickle.dump(forward_index, f)
+
+def load_forward_index_binary(file_path):
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
+
 
 # ---------------------------------------------------------
 # Inverted Index
@@ -72,8 +71,11 @@ inverted_index = {
 }
 """
 
+def create_inner_defaultdict():
+    return defaultdict(list)
+
 def build_inverted_index(forward_index):
-    inverted_index = defaultdict(lambda: defaultdict(list))
+    inverted_index = defaultdict(create_inner_defaultdict)
     
     for doc_id, entries in forward_index.items():
         for word_id, pos in entries:
@@ -94,6 +96,14 @@ def save_inverted_index(inverted_index, file_path):
                 doc_entries.append(f"{doc_id}:{pos_str}")
             
             f.write(f"{word_id}\t{';'.join(doc_entries)}\n")
+
+def save_inverted_index_binary(inverted_index, file_path):
+    with open(file_path, 'wb') as f:
+        pickle.dump(inverted_index, f)
+
+def load_inverted_index_binary(file_path):
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
 
 
 # ---------------------------------------------------------
