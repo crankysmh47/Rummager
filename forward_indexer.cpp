@@ -1,97 +1,109 @@
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <map>
+#include <cstdint>
+#include "common.h" // <--- INCLUDES STOPWORDS & TOKENIZER
 
 using namespace std;
 
+// This Lexicon class is for LOADING (Reading), not building
+class LexiconLoader {
+private:
+    unordered_map<string, int> wordToID;
 
-unordered_map<string, int> lexicon;
-int nextWordID = 1;
+public:
+    bool loadBinary(const string& filename) {
+        ifstream inFile(filename, ios::binary);
+        if (!inFile) return false;
 
+        uint32_t size;
+        inFile.read((char*)&size, sizeof(size));
 
-int getWordID(const string& word) {
-    if (lexicon.find(word) == lexicon.end()) {
-        lexicon[word] = nextWordID++;
+        for (uint32_t i = 0; i < size; ++i) {
+            uint32_t len;
+            inFile.read((char*)&len, sizeof(len));
+            string word(len, ' ');
+            inFile.read(&word[0], len);
+            wordToID[word] = i; 
+        }
+        return true;
     }
-    return lexicon[word];
-}
 
-
-void saveLexicon() {
-    ofstream outFile("lexicon.txt");
-    for (const auto& pair : lexicon) {
-        outFile << pair.first << " " << pair.second << "\n";
+    int getID(const string& word) const {
+        auto it = wordToID.find(word);
+        return (it != wordToID.end()) ? it->second : -1;
     }
-    outFile.close();
-    cout << "Lexicon saved with " << lexicon.size() << " unique words." << endl;
-}
+    
+    size_t size() const { return wordToID.size(); }
+};
 
 int main() {
-
-    ifstream infile("corpus.txt"); 
-    if (!infile.is_open()) {
-        cerr << "Error: Could not open corpus.txt" << endl;
+    LexiconLoader lexicon;
+    if (!lexicon.loadBinary("lexicon.bin")) {
+        cerr << "Error: lexicon.bin missing. Run builder first." << endl;
         return 1;
     }
 
-
+    ifstream infile("clean_dataset.txt"); 
     ofstream outfile("forward_index.bin", ios::binary);
+    ofstream mapfile("docid_map.txt");
 
-    string line;
-    int docsProcessed = 0;
-
-    cout << "Starting Forward Indexing..." << endl;
-
-
-    while (getline(infile, line)) {
-        stringstream ss(line);
-        
-        int docID;
-        ss >> docID; // Assume first token is DocID
-
-        string word;
-        // Map to store frequency for THIS document only
-        // map<WordID, Frequency>
-        map<int, int> docWordFreq; 
-        int totalWordsInDoc = 0;
-
-        // 4. Tokenize and Count Frequencies
-        while (ss >> word) {
-            int id = getWordID(word);
-            docWordFreq[id]++;
-            totalWordsInDoc++;
-        }
-
-        // 5. Write to Binary File
-        // Structure: [DocID] [TotalWords] [UniqueCount] [WordID, Freq]...
-        
-        int uniqueCount = docWordFreq.size();
-
-        outfile.write(reinterpret_cast<char*>(&docID), sizeof(int));
-        outfile.write(reinterpret_cast<char*>(&totalWordsInDoc), sizeof(int)); // For TF-IDF later
-        outfile.write(reinterpret_cast<char*>(&uniqueCount), sizeof(int));     // For Reading loop
-
-        for (auto const& [id, freq] : docWordFreq) {
-            outfile.write(reinterpret_cast<const char*>(&id), sizeof(int));
-            outfile.write(reinterpret_cast<const char*>(&freq), sizeof(int));
-        }
-
-        docsProcessed++;
-        if (docsProcessed % 1000 == 0) {
-            cout << "Processed " << docsProcessed << " documents..." << endl;
-        }
+    if (!infile || !outfile || !mapfile) {
+        cerr << "File error." << endl; 
+        return 1;
     }
 
-    infile.close();
-    outfile.close();
+    string line;
+    uint32_t internalDocID = 0;
+    map<int, int> docWordFreq; 
 
-   
-    saveLexicon();
+    cout << "Generating Forward Index..." << endl;
 
-    cout << "Done! Forward Index generated." << endl;
+    while (getline(infile, line)) {
+        size_t tabPos = line.find('\t');
+        if (tabPos == string::npos) continue;
+
+        string originalDocID = line.substr(0, tabPos);
+        string content = line.substr(tabPos + 1);
+
+        mapfile << internalDocID << " " << originalDocID << "\n";
+
+        // USES SHARED TOKENIZER (Guaranteed same logic as builder)
+        vector<string> tokens = Tokenize::tokenize(content);
+        
+        docWordFreq.clear();
+        int totalWordsInDoc = 0;
+
+        for (const string& token : tokens) {
+            int id = lexicon.getID(token);
+            if (id != -1) {
+                docWordFreq[id]++;
+                totalWordsInDoc++;
+            }
+        }
+
+        uint32_t uDocID = internalDocID;
+        uint32_t uTotal = (uint32_t)totalWordsInDoc;
+        uint32_t uUnique = (uint32_t)docWordFreq.size();
+
+        outfile.write((char*)&uDocID, sizeof(uDocID));
+        outfile.write((char*)&uTotal, sizeof(uTotal));
+        outfile.write((char*)&uUnique, sizeof(uUnique));
+
+        for (const auto& pair : docWordFreq) {
+            uint32_t uWordID = (uint32_t)pair.first;
+            uint32_t uFreq = (uint32_t)pair.second;
+            outfile.write((char*)&uWordID, sizeof(uWordID));
+            outfile.write((char*)&uFreq, sizeof(uFreq));
+        }
+
+        internalDocID++;
+        if (internalDocID % 10000 == 0) cout << "Indexed " << internalDocID << "...\r" << flush;
+    }
+
+    cout << "\nDone!" << endl;
     return 0;
 }
