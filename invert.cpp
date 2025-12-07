@@ -2,16 +2,21 @@
 #include <fstream>
 #include <vector>
 #include <cstdint>
-#include <algorithm>
 
 using namespace std;
+
+// We need a simple struct to hold both pieces of data
+struct Posting {
+    uint32_t docID;
+    uint32_t freq;
+};
 
 int main() {
     const string FORWARD_FILE = "forward_index.bin";
     const string LEXICON_FILE = "lexicon.bin";
     const string OUTPUT_FILE = "inverted_index.bin";
 
-    // 1. Get Lexicon Size (to resize vector)
+    // 1. Get Lexicon Size
     ifstream lexFile(LEXICON_FILE, ios::binary);
     if (!lexFile) {
         cerr << "Error: lexicon.bin not found." << endl;
@@ -23,16 +28,12 @@ int main() {
 
     cout << "Initializing Inverted Index for " << totalWords << " unique words..." << endl;
 
-    // 2. Create Memory Structure (WordID -> List of DocIDs)
-    // We use vector of vectors. This fits in RAM for ArXiv (approx 800MB - 1.5GB RAM).
-    vector<vector<uint32_t>> invertedIndex(totalWords);
+    // 2. Create Memory Structure 
+    // NOW STORING POSTINGS (DocID + Freq), not just DocIDs
+    vector<vector<Posting>> invertedIndex(totalWords);
 
-    // 3. Read Forward Index and Fill Inverted Index
     ifstream fwdFile(FORWARD_FILE, ios::binary);
-    if (!fwdFile) {
-        cerr << "Error: forward_index.bin not found." << endl;
-        return 1;
-    }
+    if (!fwdFile) return 1;
 
     uint32_t docID, totalDocWords, uniqueCount;
     uint32_t wordID, freq;
@@ -40,7 +41,6 @@ int main() {
 
     cout << "Inverting data..." << endl;
 
-    // Read loop must match exactly how you wrote it in main.cpp
     while (fwdFile.read((char*)&docID, sizeof(docID))) {
         fwdFile.read((char*)&totalDocWords, sizeof(totalDocWords));
         fwdFile.read((char*)&uniqueCount, sizeof(uniqueCount));
@@ -49,9 +49,9 @@ int main() {
             fwdFile.read((char*)&wordID, sizeof(wordID));
             fwdFile.read((char*)&freq, sizeof(freq));
 
-            // THE PIVOT: Add this DocID to the Word's list
             if (wordID < totalWords) {
-                invertedIndex[wordID].push_back(docID);
+                // STORE FREQUENCY HERE
+                invertedIndex[wordID].push_back({docID, freq});
             }
         }
 
@@ -60,27 +60,28 @@ int main() {
     }
     fwdFile.close();
 
-    // 4. Write Inverted Index to Disk
-    // Format: [WordID] -> [Count] -> [DocID1, DocID2, ...]
-    cout << "\nWriting Inverted Index to " << OUTPUT_FILE << "..." << endl;
+    // 3. Write Inverted Index to Disk
+    cout << "\nWriting Inverted Index with Frequencies..." << endl;
     
     ofstream outFile(OUTPUT_FILE, ios::binary);
     
-    // Write total number of words first (header)
+    // Header
     outFile.write((char*)&totalWords, sizeof(totalWords));
 
     for (uint32_t i = 0; i < totalWords; ++i) {
         uint32_t listSize = (uint32_t)invertedIndex[i].size();
         outFile.write((char*)&listSize, sizeof(listSize));
         
-        // Write the list of DocIDs
+        // Write the list of Postings (DocID + Freq)
         if (listSize > 0) {
-            outFile.write((char*)invertedIndex[i].data(), listSize * sizeof(uint32_t));
+            // We can write the vector of structs directly as a block of memory
+            // Format on disk: [DocID][Freq][DocID][Freq]...
+            outFile.write((char*)invertedIndex[i].data(), listSize * sizeof(Posting));
         }
     }
     
     outFile.close();
-    cout << "Success! Inverted Index created." << endl;
+    cout << "Success! Inverted Index created (Rank-Ready)." << endl;
 
     return 0;
 }
