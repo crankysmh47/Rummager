@@ -58,11 +58,13 @@ int main() {
 
     string line;
     uint32_t internalDocID = 0;
+    const int LIMIT = 5000;
     map<int, int> docWordFreq; 
 
     cout << "Generating Forward Index..." << endl;
 
     while (getline(infile, line)) {
+        if (internalDocID >= LIMIT) break;
         size_t tabPos = line.find('\t');
         if (tabPos == string::npos) continue;
 

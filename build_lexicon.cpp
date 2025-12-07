@@ -56,9 +56,11 @@ int main() {
 
     string line;
     int count = 0;
+    const int LIMIT = 5000;
     cout << "Building Lexicon..." << endl;
 
     while (getline(file, line)) {
+        if (count >= LIMIT) break;
         size_t tabPos = line.find('\t');
         if (tabPos == string::npos) continue;
 
