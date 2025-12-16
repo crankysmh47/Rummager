@@ -33,10 +33,10 @@ struct BarrelStream {
 };
 
 int main() {
-    const string LEXICON_FILE = "lexicon.bin";
-    const string BARREL_DIR = "barrels/";
-    const string FINAL_INDEX = "final_index.bin";
-    const string INDEX_TABLE = "index_table.bin";
+    const string LEXICON_FILE = "D:/Rummager/lexicon.bin";
+    const string BARREL_DIR = "D:/Rummager/barrels/";
+    const string FINAL_INDEX = "D:/Rummager/final_index.bin";
+    const string INDEX_TABLE = "D:/Rummager/index_table.bin";
 
     // 1. Get Lexicon Size
     ifstream lexFile(LEXICON_FILE, ios::binary);

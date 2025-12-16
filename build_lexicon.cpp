@@ -47,7 +47,7 @@ public:
 
 int main() {
     LexiconBuilder lexicon;
-    ifstream file("clean_dataset.txt");
+    ifstream file("D:/Rummager/clean_dataset.txt");
     
     if (!file.is_open()) {
         cerr << "Error: Run preprocess.py first!" << endl;
@@ -76,7 +76,7 @@ int main() {
     }
 
     cout << "\nSaving lexicon.bin..." << endl;
-    lexicon.saveBinary("lexicon.bin");
+    lexicon.saveBinary("D:/Rummager/lexicon.bin");
     cout << "Done. Total words: " << lexicon.getTotalWords() << endl;
 
     return 0;

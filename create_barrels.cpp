@@ -14,9 +14,9 @@ struct Posting {
 };
 
 // 2. Configuration
-const string FORWARD_FILE = "forward_index.bin";
-const string LEXICON_FILE = "lexicon.bin";
-const string BARREL_DIR = "barrels/"; // Ensure this folder exists
+const string FORWARD_FILE = "D:/Rummager/forward_index.bin";
+const string LEXICON_FILE = "D:/Rummager/lexicon.bin";
+const string BARREL_DIR = "D:/Rummager/barrels/"; // Ensure this folder exists
 const int DOCS_PER_BARREL = 10000;    // Adjust based on your RAM
 
 // Helper to write a barrel to disk

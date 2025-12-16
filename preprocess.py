@@ -2,7 +2,7 @@ import json
 import sys
 
 
-INPUT_FILE = "arxiv-metadata-oai-snapshot.json"
+INPUT_FILE = "tester_dataset.json"
 OUTPUT_FILE = "clean_dataset.txt"
 
 def clean_text(text):
