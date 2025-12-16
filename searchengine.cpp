@@ -15,7 +15,7 @@ const string LEXICON_FILE = "lexicon.bin";
 const string INV_IDX_FILE = "inverted_index.bin";
 const string LENGTHS_FILE = "doc_lengths.bin";
 const string DOC_MAP_FILE = "id_map.txt"; 
-const string PAGERANK_FILE = "pagerank_scores.txt"; A
+const string PAGERANK_FILE = "pagerank_scores.txt"; 
 
 const double K1 = 1.5;
 const double B = 0.75;
