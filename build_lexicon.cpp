@@ -47,7 +47,7 @@ public:
 
 int main() {
     LexiconBuilder lexicon;
-    ifstream file("D:/Rummager/clean_dataset.txt");
+    ifstream file("C:\\Users\\Hank47\\Sem3\\Rummager\\clean_dataset.txt");
     
     if (!file.is_open()) {
         cerr << "Error: Run preprocess.py first!" << endl;
@@ -76,8 +76,30 @@ int main() {
     }
 
     cout << "\nSaving lexicon.bin..." << endl;
-    lexicon.saveBinary("D:/Rummager/lexicon.bin");
+    lexicon.saveBinary("C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin");
     cout << "Done. Total words: " << lexicon.getTotalWords() << endl;
 
     return 0;
 }
+
+/*
+    ========================================================================================
+    EDUCATIONAL SUMMARY: LEXICON CONSTRUCTION
+    ========================================================================================
+    
+    1. THE PROBLEM
+       - We need to map string words ("algorithm") to integer IDs (42).
+       - Integers are faster to process, smaller to store, and easier to array-index.
+    
+    2. DATA STRUCTURE: HASH MAP (unordered_map)
+       - We use `std::unordered_map<string, int>` for O(1) average lookup/insertion.
+       - Logic:
+         - Read word.
+         - If in map, return ID.
+         - If not, assign new ID = current_size, insert into map.
+    
+    3. PERSISTENCE
+       - The map is in RAM. We must save it to disk (`lexicon.bin`) so other programs
+         (indexer, search engine) can understand the IDs.
+       - Format: [TotalWords] [Len1][Word1] [Len2][Word2] ...
+*/

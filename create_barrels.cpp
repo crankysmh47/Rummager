@@ -7,20 +7,30 @@
 
 using namespace std;
 
-// 1. Define the Posting Structure (Rank-Ready)
+// --- CONFIGURATION ---
+const string INVERTED_INDEX_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\inverted_index.bin";
+const string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
+const string LEXICON_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin";
+
+// MUST match searchengine.cpp
+const uint32_t WORDS_PER_BARREL = 50000; 
+
 struct Posting {
     uint32_t docID;
     uint32_t freq;
 };
 
-// 2. Configuration
-const string FORWARD_FILE = "D:/Rummager/forward_index.bin";
-const string LEXICON_FILE = "D:/Rummager/lexicon.bin";
-const string BARREL_DIR = "D:/Rummager/barrels/"; // Ensure this folder exists
-const int DOCS_PER_BARREL = 10000;    // Adjust based on your RAM
+// Helper: Ensure directory exists
+void createDir(const string& path) {
+    #ifdef _WIN32
+        string cmd = "mkdir \"" + path + "\" 2> NUL";
+        system(cmd.c_str());
+    #else
+        system(("mkdir -p " + path).c_str());
+    #endif
+}
 
-// Helper to write a barrel to disk
-void saveBarrel(int barrelID, const vector<vector<Posting>>& index, uint32_t totalWords) {
+void writeBarrel(int barrelID, const vector<vector<Posting>>& barrelData) {
     string filename = BARREL_DIR + "barrel_" + to_string(barrelID) + ".bin";
     ofstream outFile(filename, ios::binary);
     
@@ -29,95 +39,148 @@ void saveBarrel(int barrelID, const vector<vector<Posting>>& index, uint32_t tot
         return;
     }
 
-    cout << "Writing Barrel " << barrelID << " to disk..." << endl;
+    // 1. Prepare Offset Table
+    // The table has one entry (long long = 8 bytes) per potential word in this barrel.
+    // If a word has no postings, the offset is 0.
+    vector<long long> offsets(WORDS_PER_BARREL, 0);
 
-    for (uint32_t wordID = 0; wordID < totalWords; ++wordID) {
-        uint32_t listSize = (uint32_t)index[wordID].size();
-        
-        // Optimization: Only write words that actually appeared in this batch
-        if (listSize > 0) {
-            // Format: [WordID] [ListSize] [Posting1] [Posting2]...
-            outFile.write((char*)&wordID, sizeof(wordID));
-            outFile.write((char*)&listSize, sizeof(listSize));
-            outFile.write((char*)index[wordID].data(), listSize * sizeof(Posting));
+    // Calculate where the ACTUAL data starts.
+    // Data starts strictly after the Offset Table.
+    long long currentFileOffset = WORDS_PER_BARREL * sizeof(long long);
+
+    // 2. Calculate Offsets
+    for (uint32_t i = 0; i < WORDS_PER_BARREL; ++i) {
+        if (i < barrelData.size() && !barrelData[i].empty()) {
+            offsets[i] = currentFileOffset;
+            
+            // Size of this posting list on disk:
+            // [ListSize (4 bytes)] + [Posting1] + [Posting2] ...
+            long long listByteSize = sizeof(uint32_t) + (barrelData[i].size() * sizeof(Posting));
+            
+            currentFileOffset += listByteSize;
         }
     }
-    
+
+    // 3. Write Offset Table
+    cout << "  Writing Barrel " << barrelID << " Header (Offsets)..." << endl;
+    outFile.write((char*)offsets.data(), offsets.size() * sizeof(long long));
+
+    // 4. Write Data
+    cout << "  Writing Posting Lists..." << endl;
+    for (uint32_t i = 0; i < WORDS_PER_BARREL; ++i) {
+        if (i < barrelData.size() && !barrelData[i].empty()) {
+            uint32_t listSize = (uint32_t)barrelData[i].size();
+            outFile.write((char*)&listSize, sizeof(listSize));
+            outFile.write((char*)barrelData[i].data(), listSize * sizeof(Posting));
+        }
+    }
+
     outFile.close();
 }
 
 int main() {
-    // Create directory for barrels (Linux/Mac command, use _mkdir for Windows if needed)
-    #ifdef _WIN32
-        system("mkdir barrels");
-    #else
-        system("mkdir -p barrels");
-    #endif
+    createDir(BARREL_DIR);
 
-    // 1. Load Lexicon Info
+    // 1. Get Lexicon Size (to know total words)
     ifstream lexFile(LEXICON_FILE, ios::binary);
     if (!lexFile) {
-        cerr << "Error: lexicon.bin not found." << endl;
+        cerr << "Error: lexicon.bin not found. Run build_lexicon first." << endl;
         return 1;
     }
     uint32_t totalWords;
     lexFile.read((char*)&totalWords, sizeof(totalWords));
     lexFile.close();
 
-    // 2. Prepare Memory
-    vector<vector<Posting>> currentBarrel(totalWords);
-    
-    ifstream fwdFile(FORWARD_FILE, ios::binary);
-    if (!fwdFile) {
-        cerr << "Error: forward_index.bin not found." << endl;
+    cout << "Total Words: " << totalWords << ". Batch Size: " << WORDS_PER_BARREL << endl;
+
+    // 2. Open Inverted Index
+    ifstream invFile(INVERTED_INDEX_FILE, ios::binary);
+    if (!invFile) {
+        cerr << "Error: inverted_index.bin not found. Run invert first." << endl;
         return 1;
     }
 
-    uint32_t docID, totalDocWords, uniqueCount;
-    uint32_t wordID, freq;
-    int docsInCurrentBarrel = 0;
-    int barrelCount = 0;
+    // Skip Header (Total Words)
+    uint32_t checkTotal;
+    invFile.read((char*)&checkTotal, sizeof(checkTotal));
 
-    cout << "Starting Barrel Creation. Batch size: " << DOCS_PER_BARREL << " docs." << endl;
+    // 3. Sequential Processing (Barrel by Barrel)
+    int currentBarrelID = 0;
+    
+    // We process WORDS sequentially. 
+    // Barrel 0: Words 0 to 49,999
+    // Barrel 1: Words 50,000 to 99,999
+    // ...
+    
+    while (currentBarrelID * WORDS_PER_BARREL < totalWords) {
+        uint32_t startWord = currentBarrelID * WORDS_PER_BARREL;
+        uint32_t endWord = startWord + WORDS_PER_BARREL; // Exclusive
+        if (endWord > totalWords) endWord = totalWords;
 
-    // 3. Main Loop
-    while (fwdFile.read((char*)&docID, sizeof(docID))) {
-        fwdFile.read((char*)&totalDocWords, sizeof(totalDocWords));
-        fwdFile.read((char*)&uniqueCount, sizeof(uniqueCount));
+        cout << "Building Barrel " << currentBarrelID << " (Words " << startWord << "-" << (endWord-1) << ")..." << endl;
 
-        for (uint32_t i = 0; i < uniqueCount; ++i) {
-            fwdFile.read((char*)&wordID, sizeof(wordID));
-            fwdFile.read((char*)&freq, sizeof(freq));
+        // In-Memory Storage for THIS Barrel only
+        vector<vector<Posting>> barrelData(WORDS_PER_BARREL);
 
-            if (wordID < totalWords) {
-                currentBarrel[wordID].push_back({docID, freq});
+        // Read from Inverted Index (Assumption: Inverted Index is sorted by WordID)
+        // Since inverted_index.bin IS sorted by WordID 0...N (created by invert.cpp loop),
+        // we can just read sequentially!
+        
+        for (uint32_t w = startWord; w < endWord; ++w) {
+            uint32_t listSize;
+            invFile.read((char*)&listSize, sizeof(listSize));
+            
+            if (listSize > 0) {
+                vector<Posting> postings(listSize);
+                invFile.read((char*)postings.data(), listSize * sizeof(Posting));
+                
+                // Validate
+                if (invFile.gcount() != listSize * sizeof(Posting)) {
+                    cerr << "Error reading postings for word " << w << endl;
+                    break;
+                }
+
+                // Store in local barrel buffer (0-indexed relative to barrel)
+                barrelData[w - startWord] = postings;
             }
         }
 
-        docsInCurrentBarrel++;
+        // Write to Disk
+        writeBarrel(currentBarrelID, barrelData);
 
-        // 4. Check Limit -> Dump Barrel
-        if (docsInCurrentBarrel >= DOCS_PER_BARREL) {
-            saveBarrel(barrelCount, currentBarrel, totalWords);
-            
-            // Reset for next batch
-            barrelCount++;
-            docsInCurrentBarrel = 0;
-            
-            // Clear vectors but keep structure to avoid re-allocation
-            for (auto& list : currentBarrel) {
-                list.clear();
-            }
-        }
+        currentBarrelID++;
     }
 
-    // 5. Dump remaining data (the last partial barrel)
-    if (docsInCurrentBarrel > 0) {
-        saveBarrel(barrelCount, currentBarrel, totalWords);
-    }
-
-    fwdFile.close();
-    cout << "Done! Created " << (barrelCount + 1) << " barrels in '" << BARREL_DIR << "'." << endl;
-
+    invFile.close();
+    cout << "Success! Created " << currentBarrelID << " barrels." << endl;
     return 0;
 }
+
+/*
+    ========================================================================================
+    EDUCATIONAL SUMMARY: BARRELS & INDEX SHARDING
+    ========================================================================================
+    
+    1. THE PROBLEM: RAM LIMITS
+       - A full inverted index for the web is TBs in size.
+       - We cannot load `vector<vector<Posting>>` for 10M words into RAM.
+    
+    2. THE SOLUTION: SHARDING (BARRELS)
+       - We split the index into smaller chunks called "Barrels".
+       - Strategy: "Term Partitioning"
+         - Barrel 0: Words 0 - 49,999
+         - Barrel 1: Words 50,000 - 99,999
+       - When searching for a word, we calculate `BarrelID = WordID / 50000`.
+       - We only open that specific file.
+    
+    3. DATA STRUCTURE: OFFSET TABLE (O(1) LOOKUP)
+       - Inside a barrel, we don't want to scan to find a word's list.
+       - We place a "Header" at the start of the file: an array of offsets.
+       - Logic:
+         - Need word 105 (Local ID = 5)?
+         - Seek to byte `5 * 8` (8 bytes per long long).
+         - Read the Offset value (e.g., 2048).
+         - Seek to byte 2048.
+         - Read the data.
+       - This guarantees single-seek retrieval time, critical for speed.
+*/

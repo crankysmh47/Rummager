@@ -1,0 +1,19 @@
+# --- Ignore Data & Indices ---
+*.bin
+*.txt
+*.json
+barrels/
+barrels_FULL/
+
+# --- Ignore Executables & Builds ---
+*.exe
+*.o
+*.obj
+
+# --- Ignore Python Cache ---
+__pycache__/
+*.pyc
+
+# --- Keep these specific text files if you want, but usually data is ignored ---
+!CMakeLists.txt
+!README.md

@@ -3,7 +3,7 @@ import sys
 
 # --- CONFIGURATION ---
 # Ensure this points to your CITATION file (internal-references)
-INPUT_FILE = r"D:\sem 3 labs\Data\internal-references-pdftotext.json"
+INPUT_FILE = r"C:\\Users\\Hank47\Downloads\\internal-references-v0.2.0-2019-03-01.json\\internal-references-pdftotext.json"
 MAP_FILE = "id_map.txt"
 GRAPH_FILE = "graph.txt"
 

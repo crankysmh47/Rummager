@@ -18,7 +18,7 @@ struct Node {
 
 int main() {
     std::cout << "Loading Graph..." << std::endl;
-    std::ifstream infile("D:\\sem 3 labs\\Rummager\\Rummager\\graph.txt");
+    std::ifstream infile("C:\\Users\\Hank47\\Sem3\\Rummager\\graph.txt");
     if (!infile.is_open()) {
         std::cerr << "Error: Could not open graph.txt" << std::endl;
         return 1;

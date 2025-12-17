@@ -68,3 +68,18 @@ public:
 };
 
 #endif
+
+/*
+    ========================================================================================
+    EDUCATIONAL SUMMARY: NLP PRE-PROCESSING
+    ========================================================================================
+    
+    1. TOKENIZATION
+       - Splitting text into individual "Terms" or "Tokens".
+       - We strictly use alphanumeric characters and lowercase everything.
+    
+    2. STOPWORD REMOVAL
+       - Words like "the", "is", "at" appear in almost every document.
+       - They confuse the ranking algorithm (low IDF) and waste space.
+       - Removing them improves "Precision" (Relevance) and reduces Index size.
+*/
