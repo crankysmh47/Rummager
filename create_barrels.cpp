@@ -9,7 +9,7 @@ using namespace std;
 
 // --- CONFIGURATION ---
 const string INVERTED_INDEX_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\inverted_index.bin";
-const string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
+string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\"; // Not const anymore
 const string LEXICON_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin";
 
 // MUST match searchengine.cpp
@@ -78,7 +78,15 @@ void writeBarrel(int barrelID, const vector<vector<Posting>>& barrelData) {
     outFile.close();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc > 1) {
+        BARREL_DIR = argv[1];
+        // Ensure trailing slash
+        if (BARREL_DIR.back() != '\\' && BARREL_DIR.back() != '/') {
+            BARREL_DIR += "\\";
+        }
+    }
+    cout << "Output Directory: " << BARREL_DIR << endl;
     createDir(BARREL_DIR);
 
     // 1. Get Lexicon Size (to know total words)
@@ -163,14 +171,14 @@ int main() {
     
     1. THE PROBLEM: RAM LIMITS
        - A full inverted index for the web is TBs in size.
-       - We cannot load `vector<vector<Posting>>` for 10M words into RAM.
+       - We cannot load vector<vector<Posting>> for 10M words into RAM.
     
     2. THE SOLUTION: SHARDING (BARRELS)
        - We split the index into smaller chunks called "Barrels".
        - Strategy: "Term Partitioning"
          - Barrel 0: Words 0 - 49,999
          - Barrel 1: Words 50,000 - 99,999
-       - When searching for a word, we calculate `BarrelID = WordID / 50000`.
+       - When searching for a word, we calculate BarrelID = WordID / 50000.
        - We only open that specific file.
     
     3. DATA STRUCTURE: OFFSET TABLE (O(1) LOOKUP)
@@ -178,7 +186,7 @@ int main() {
        - We place a "Header" at the start of the file: an array of offsets.
        - Logic:
          - Need word 105 (Local ID = 5)?
-         - Seek to byte `5 * 8` (8 bytes per long long).
+         - Seek to byte 5 * 8 (8 bytes per long long).
          - Read the Offset value (e.g., 2048).
          - Seek to byte 2048.
          - Read the data.

@@ -8,12 +8,14 @@
 #include <algorithm>
 #include "common.h"
 #include <cstdint>
-#include<chrono>
+#include <chrono>
+#include <filesystem> // C++17
 
 using namespace std;
+namespace fs = std::filesystem;
 
 // --- CONFIGURATION ---
-const string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
+string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
 const string LEXICON_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin";
 const string LENGTHS_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_lengths.bin";
 const string META_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_metadata.txt"; // The new file
@@ -54,6 +56,11 @@ public:
     void loadMetadata() {
         cout << "--- Initializing Engine ---" << endl;
         
+        lexicon.clear();
+        docLengths.clear();
+        pageRankScores.clear();
+        metadata.clear();
+
         // 1. Lexicon (Standard)
         ifstream lexFile(LEXICON_FILE, ios::binary);
         uint32_t totalWords;
@@ -133,67 +140,86 @@ public:
         return results;
     }
 
-    // --- QUERY (Standard) ---
-    // --- UPDATED QUERY FUNCTION ---
-    // Now accepts optional filter and sort flags
+    // --- UPDATED QUERY FUNCTION (AND LOGIC) ---
     vector<Result> query(string q, string categoryFilter = "", bool sortByDate = false) {
         
-        vector<string> tokens = Tokenize::tokenize(q);
-        unordered_map<uint32_t, double> scores;
+        vector<string> rawTokens = Tokenize::tokenize(q);
+        if (rawTokens.empty()) return {};
 
-        // 1. Standard BM25 Retrieval
+        // 1. Unique Tokens (handle "data data structures" -> "data", "structures")
+        vector<string> tokens;
+        sort(rawTokens.begin(), rawTokens.end());
+        unique_copy(rawTokens.begin(), rawTokens.end(), back_inserter(tokens));
+        
+        // 2. Short-Circuit: If any term is missing from lexicon, Intersection is EMPTY.
         for (const string& token : tokens) {
-            if (lexicon.find(token) == lexicon.end()) continue;
-            int id = lexicon[token];
-            
-            vector<Posting> postings = fetchPostings(id);
-            if (postings.empty()) continue;
-            
-            double n = (double)postings.size();
-            double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
+            if (lexicon.find(token) == lexicon.end()) {
+                // If "machine" exists but "learning" doesn't, "machine AND learning" is empty.
+                return {}; 
+            }
+        }
 
-            for (const auto& p : postings) {
-                // --- FILTERING STEP ---
-                // If the user asked for a category (e.g., "cs.LG"), check metadata NOW.
-                // This saves us from calculating math for irrelevant papers.
+        unordered_map<uint32_t, int> docMatchCounts;
+        unordered_map<uint32_t, double> docScores;
+        int requiredMatches = tokens.size();
+
+        // 3. Process Terms
+        for (const string& token : tokens) {
+            int id = lexicon[token];
+            vector<Posting> postings = fetchPostings(id);
+            
+            // Optimization: If a posting list is empty (should be caught by lexicon check, but safety)
+            if (postings.empty()) return {};
+
+             double n = (double)postings.size();
+             double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
+
+             for (const auto& p : postings) {
+                 // Optimization: Score calculation
+                 double tf = (double)p.freq;
+                 double dl = (double)docLengths[p.docID];
+                 double num = tf * (K1 + 1);
+                 double den = tf + K1 * (1 - B + B * (dl / avgDL));
+                 
+                 // Accumulate Score
+                 docScores[p.docID] += idf * (num / den);
+                 
+                 // Track Match Count
+                 docMatchCounts[p.docID]++;
+             }
+        }
+
+        // 4. Filter & Rank
+        vector<Result> finalRes;
+        for (auto& pair : docScores) {
+            uint32_t docID = pair.first;
+            
+            // CRITICAL: Intersection Check
+            if (docMatchCounts[docID] == requiredMatches) {
+                
+                // Check Category Filter
                 if (!categoryFilter.empty()) {
-                    // Check if our metadata exists for this ID
-                    if (p.docID < metadata.size()) {
-                        // "cs.LG" is often inside "cs.LG cs.AI stat.ML"
-                        // We check if the substring exists.
-                        if (metadata[p.docID].category.find(categoryFilter) == string::npos) {
-                            continue; // Skip this doc!
+                    if (docID < metadata.size()) {
+                        if (metadata[docID].category.find(categoryFilter) == string::npos) {
+                            continue;
                         }
                     }
                 }
 
-                double tf = (double)p.freq;
-                double dl = (double)docLengths[p.docID];
-                double num = tf * (K1 + 1);
-                double den = tf + K1 * (1 - B + B * (dl / avgDL));
-                
-                scores[p.docID] += idf * (num / den);
+                // Add PageRank
+                double finalScore = pair.second + (pageRankScores[docID] * PAGERANK_WEIGHT);
+                finalRes.push_back({docID, finalScore});
             }
-        }
-
-        vector<Result> finalRes;
-        for (auto& pair : scores) {
-            double finalScore = pair.second + (pageRankScores[pair.first] * PAGERANK_WEIGHT);
-            finalRes.push_back({pair.first, finalScore});
         }
         
         // --- SORTING STEP ---
         if (sortByDate) {
-            // Sort by Date (Descending: Newest first)
             sort(finalRes.begin(), finalRes.end(), [&](const Result& a, const Result& b) {
-                // We access the metadata vector to compare date strings
-                // "2023-10-27" > "2020-01-01" works perfectly with string comparison
                 string dateA = (a.docID < metadata.size()) ? metadata[a.docID].date : "0000";
                 string dateB = (b.docID < metadata.size()) ? metadata[b.docID].date : "0000";
                 return dateA > dateB; 
             });
         } else {
-            // Default: Sort by Relevance Score
             sort(finalRes.begin(), finalRes.end(), [](const Result& a, const Result& b){
                 return a.score > b.score;
             });
@@ -225,6 +251,24 @@ int main() {
     cout << "Options: /date (sort by date), /cat:cs.AI (filter by category)" << endl;
 
     while(true) {
+        // --- HOT SWAP LOGIC ---
+        if (fs::exists("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal")) {
+            cout << "\n[Alignment] HOT SWAP DETECTED!" << endl;
+            ifstream sig("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal");
+            string newDir;
+            if (getline(sig, newDir) && !newDir.empty()) {
+                BARREL_DIR = newDir;
+                 if (BARREL_DIR.back() != '\\' && BARREL_DIR.back() != '/') {
+                    BARREL_DIR += "\\";
+                }
+                cout << "Switching Barrels -> " << BARREL_DIR << endl;
+                engine.loadMetadata();
+            }
+            sig.close();
+            fs::remove("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal");
+            cout << "Hot Swap Complete." << endl;
+        }
+
         cout << "\nQuery> ";
         if (!getline(cin, input)) break; // Stop on EOF or error
         if (input == "exit") break;
@@ -289,7 +333,7 @@ int main() {
     
     3. EFFICIENCY (SEEKING)
        - We do NOT load the entire index into RAM.
-       - We use `seekg()` (File Pointer) to jump directly to the data we need.
+       - We use seekg() (File Pointer) to jump directly to the data we need.
        - The "Offset Table" in the barrel allows O(1) jump.
        - This effectively treats the Hard Drive as a giant Hash Map.
 */
