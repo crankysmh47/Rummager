@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arXivSearch</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Fonts: 'Merriweather' for the academic "TeX" look, 'Inter' for UI -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Merriweather:ital,wght@0,300;0,700;0,900;1,300&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-wrapper" id="app-wrapper">
+        
+        <!-- LARGE LOGO SECTION -->
+        <div class="logo-section">
+            <h1 class="main-logo">
+                <span class="logo-ar">ar</span><span class="logo-chi">X</span><span class="logo-iv">iv</span><span class="logo-search">Search</span>
+            </h1>
+            <p class="tagline">The C++ Indexed Academic Engine</p>
+        </div>
+
+        <!-- SEARCH BAR -->
+        <form id="search-form" class="search-container">
+            <div class="search-input-wrapper">
+                <span class="search-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </span>
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    placeholder="Search papers, authors, or abstracts..." 
+                    autocomplete="off" 
+                    autofocus
+                >
+                <button type="button" id="clear-btn" class="hidden" aria-label="Clear">✕</button>
+            </div>
+            
+            <div class="search-buttons">
+                <button type="submit" class="btn-primary">arXiv Search</button>
+                <button type="button" class="btn-secondary">I'm Feeling Academic</button>
+            </div>
+        </form>
+
+        <!-- STATS & RESULTS -->
+        <div id="results-area" class="results-area hidden">
+            <div id="stats-bar" class="stats-bar"></div>
+            <div id="loader" class="loader hidden"></div>
+            <div id="results-list" class="results-list"></div>
+        </div>
+
+    </div>
+
+    <!-- Error Toast -->
+    <div id="error-toast" class="error-toast hidden">Error connecting to backend</div>
+
+    <script src="script.js"></script>
+</body>
+</html>

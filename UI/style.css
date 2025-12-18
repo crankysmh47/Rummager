@@ -1,0 +1,235 @@
+:root {
+    --primary: #b31b1b;       /* Cornell Red (Classic arXiv color) */
+    --text-dark: #202124;
+    --text-gray: #5f6368;
+    --bg-gray: #f2f2f2;
+    --border: #dfe1e5;
+    --shadow-hover: 0 1px 6px rgba(32,33,36,0.28);
+    --anim-speed: 0.4s;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #fff;
+    color: var(--text-dark);
+    height: 100vh;
+    overflow-y: scroll; /* Always show scrollbar to prevent jump */
+}
+
+/* --- THE MAIN WRAPPER (Flexbox Centering) --- */
+.app-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh; /* Starts centered vertically */
+    transition: all var(--anim-speed) ease;
+    padding: 20px;
+    width: 100%;
+}
+
+/* --- LOGO DESIGN --- */
+.logo-section {
+    text-align: center;
+    margin-bottom: 30px;
+    transition: all var(--anim-speed) ease;
+}
+
+.main-logo {
+    font-size: 5rem; /* BIG Google-style size */
+    user-select: none;
+    line-height: 1;
+    letter-spacing: -1px;
+}
+
+/* "ar" and "iv" - Serif, slightly lighter */
+.logo-ar, .logo-iv {
+    font-family: 'Merriweather', serif;
+    font-weight: 300;
+    color: var(--text-dark);
+}
+
+/* "X" - The Greek Chi aesthetic */
+.logo-chi {
+    font-family: 'Merriweather', serif;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--primary); /* Red accent */
+    margin: 0 -2px; /* Tighten kerning for the X */
+    display: inline-block;
+    transform: scale(1.1); /* Make X slightly bigger */
+}
+
+/* "Search" - Modern, Bold, Sans-serif */
+.logo-search {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: #4285f4; /* Google/Tech Blue */
+    font-size: 0.85em; /* Optical alignment */
+    margin-left: 8px;
+    letter-spacing: -0.5px;
+}
+
+.tagline {
+    margin-top: 10px;
+    color: var(--text-gray);
+    font-size: 1rem;
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+/* --- SEARCH BAR --- */
+.search-container {
+    width: 100%;
+    max-width: 584px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.search-input-wrapper {
+    width: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 0 14px;
+    height: 46px;
+    transition: box-shadow 0.2s, background-color 0.2s;
+}
+
+.search-input-wrapper:hover, 
+.search-input-wrapper:focus-within {
+    background-color: #fff;
+    box-shadow: var(--shadow-hover);
+    border-color: rgba(223,225,229,0);
+}
+
+.search-icon { color: #9aa0a6; margin-right: 12px; display: flex; }
+
+#search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 16px;
+    background: transparent;
+    height: 100%;
+}
+
+#clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: #70757a;
+    padding: 0 8px;
+}
+
+/* Buttons below search bar */
+.search-buttons {
+    margin-top: 28px;
+    display: flex;
+    gap: 12px;
+    transition: opacity 0.2s;
+}
+
+.btn-primary, .btn-secondary {
+    background-color: #f8f9fa;
+    border: 1px solid #f8f9fa;
+    border-radius: 4px;
+    color: #3c4043;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 0 16px;
+    height: 36px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover, .btn-secondary:hover {
+    box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    border-color: #dadce0;
+    color: #202124;
+}
+
+/* --- SEARCHING STATE (The Transformation) --- */
+/* When .has-searched is added to app-wrapper */
+
+.app-wrapper.has-searched {
+    justify-content: flex-start;
+    min-height: auto;
+    padding-top: 20px;
+}
+
+.app-wrapper.has-searched .logo-section {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    transform: scale(0.6); /* Shrink logo */
+    margin-top: -15px;
+}
+
+.app-wrapper.has-searched .tagline {
+    display: none; /* Hide tagline to save space */
+}
+
+.app-wrapper.has-searched .search-buttons {
+    display: none; /* Hide "I'm feeling lucky" buttons */
+}
+
+.app-wrapper.has-searched .results-area {
+    width: 100%;
+    max-width: 650px; /* Reading width */
+    margin-top: 10px;
+    align-self: center; /* Keep results centered relative to page */
+}
+
+/* --- RESULTS STYLING --- */
+.stats-bar {
+    color: var(--text-gray);
+    font-size: 0.85rem;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+}
+
+.result-card {
+    margin-bottom: 30px;
+}
+
+.result-title a {
+    color: #1a0dab;
+    text-decoration: none;
+    font-size: 20px;
+    font-family: 'Inter', sans-serif; /* Google uses sans for titles now */
+    font-weight: 400;
+}
+.result-title a:hover { text-decoration: underline; }
+
+.result-meta {
+    color: #006621; /* Green URL/Author line */
+    font-size: 14px;
+    margin: 2px 0 4px 0;
+}
+
+.result-snippet {
+    color: #4d5156;
+    font-size: 14px;
+    line-height: 1.58;
+}
+
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid var(--primary);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.hidden { display: none !important; }
