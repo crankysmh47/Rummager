@@ -1,0 +1,42 @@
+# BASE IMAGE
+FROM python:3.9-slim
+
+# SYSTEM DEPENDENCIES
+RUN apt-get update && apt-get install -y \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# WORKDIR
+WORKDIR /app
+
+# BUILD C++ ENGINE
+COPY searchengine.cpp .
+COPY common.h .
+# (Copy other C++ sources if needed)
+RUN g++ -O3 -std=c++17 searchengine.cpp -o searchengine
+
+# COPY DATA
+COPY lexicon.bin .
+COPY forward_index.bin .
+COPY inverted_index.bin .
+COPY doc_lengths.bin .
+COPY pagerank.txt .
+COPY doc_metadata.txt .
+COPY trie.bin .
+
+# PYTHON DEPS
+COPY requirements.txt .
+RUN pip install flask flask-cors requests gunicorn
+
+# BACKEND CODE
+COPY main.py .
+
+# STATIC PRESENCE
+COPY frontend/dist /app/static
+
+# ENVIRONMENT VARIABLES
+ENV RAILWAY_ENVIRONMENT=true
+
+# RUN
+CMD ["gunicorn", "-w", "4", "main:app", "-b", "0.0.0.0:8000"]

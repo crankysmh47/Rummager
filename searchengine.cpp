@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <chrono>
 #include <filesystem> // C++17
+#include <queue> // NEW
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -18,8 +19,9 @@ namespace fs = std::filesystem;
 string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
 const string LEXICON_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin";
 const string LENGTHS_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_lengths.bin";
-const string META_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_metadata.txt"; // The new file
+const string META_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_metadata.txt";
 const string PAGERANK_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\pagerank_scores.txt";
+const string TRIE_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\trie.bin"; // NEW
 
 const uint32_t WORDS_PER_BARREL = 50000;
 const double K1 = 1.5;
@@ -38,59 +40,86 @@ struct DocInfo {
     string date;
 };
 
+// NEW: Flat Trie Node
+struct FlatNode {
+    char key;
+    int32_t frequency; // 0 if not end of word
+    int32_t childIndex; // -1 if no children
+    int32_t siblingIndex; // -1 if no next sibling
+    bool isEnd;
+};
+
 class BarrelSearcher {
 private:
     unordered_map<string, int> lexicon;
     vector<uint32_t> docLengths;
     vector<double> pageRankScores;
-    
-    // NEW: Vector of Structs instead of just strings
     vector<DocInfo> metadata;
+    vector<FlatNode> trie; // NEW
     
     double avgDL;
     uint32_t totalDocs;
 
+    // --- CONFIGURATION ---
+    bool JSON_MODE = false;
+    uint32_t DOC_LIMIT = 0; // 0 = No Limit
+
 public:
-    BarrelSearcher() { loadMetadata(); }
+    BarrelSearcher(bool jsonMode, uint32_t limit) : JSON_MODE(jsonMode), DOC_LIMIT(limit) { 
+        loadMetadata(); 
+    }
 
     void loadMetadata() {
-        cout << "--- Initializing Engine ---" << endl;
+        if (!JSON_MODE) cout << "--- Initializing Engine ---" << endl;
         
         lexicon.clear();
         docLengths.clear();
         pageRankScores.clear();
         metadata.clear();
+        trie.clear(); 
 
         // 1. Lexicon (Standard)
         ifstream lexFile(LEXICON_FILE, ios::binary);
-        uint32_t totalWords;
-        lexFile.read((char*)&totalWords, sizeof(totalWords));
-        for (uint32_t i = 0; i < totalWords; i++) {
-            uint32_t len;
-            lexFile.read((char*)&len, sizeof(len));
-            string word(len, ' ');
-            lexFile.read(&word[0], len);
-            lexicon[word] = i;
+        if (lexFile) {
+            uint32_t totalWords;
+            lexFile.read((char*)&totalWords, sizeof(totalWords));
+            for (uint32_t i = 0; i < totalWords; i++) {
+                uint32_t len;
+                lexFile.read((char*)&len, sizeof(len));
+                string word(len, ' ');
+                lexFile.read(&word[0], len);
+                lexicon[word] = i;
+            }
+            lexFile.close();
         }
-        lexFile.close();
 
         // 2. Lengths (Standard)
         ifstream lenFile(LENGTHS_FILE, ios::binary);
-        lenFile.read((char*)&totalDocs, sizeof(totalDocs));
-        docLengths.resize(totalDocs);
-        lenFile.read((char*)docLengths.data(), totalDocs * sizeof(uint32_t));
-        lenFile.close();
+        if (lenFile) {
+            lenFile.read((char*)&totalDocs, sizeof(totalDocs));
+            
+            // LIMIT LOGIC
+            if (DOC_LIMIT > 0 && DOC_LIMIT < totalDocs) {
+                totalDocs = DOC_LIMIT;
+            }
+
+            docLengths.resize(totalDocs);
+            lenFile.read((char*)docLengths.data(), totalDocs * sizeof(uint32_t));
+            lenFile.close();
+        }
         
         long long sum = 0;
         for (uint32_t l : docLengths) sum += l;
         avgDL = (totalDocs > 0) ? (double)sum / totalDocs : 0;
 
         // 3. Metadata (UPDATED)
-        cout << "Loading Metadata...";
+        if (!JSON_MODE) cout << "Loading Metadata...";
         ifstream mFile(META_FILE);
         if (mFile) {
             string line;
             while (getline(mFile, line)) {
+                if (DOC_LIMIT > 0 && metadata.size() >= DOC_LIMIT) break;
+
                 DocInfo doc;
                 stringstream ss(line);
                 string segment;
@@ -104,7 +133,7 @@ public:
                 
                 metadata.push_back(doc);
             }
-            cout << " Loaded " << metadata.size() << " docs." << endl;
+            if (!JSON_MODE) cout << " Loaded " << metadata.size() << " docs." << endl;
         }
 
         // 4. PageRank (Standard)
@@ -116,6 +145,67 @@ public:
                 if(id < (int)totalDocs) pageRankScores[id] = score;
             }
         }
+
+        // 5. Autocomplete Trie (NEW)
+        ifstream tFile(TRIE_FILE, ios::binary);
+        if (tFile) {
+            // Get size
+            tFile.seekg(0, ios::end);
+            size_t size = tFile.tellg();
+            tFile.seekg(0, ios::beg);
+            
+            size_t numNodes = size / sizeof(FlatNode);
+            trie.resize(numNodes);
+            tFile.read((char*)trie.data(), size);
+            if (!JSON_MODE) cout << "Loaded Autocomplete Index (" << numNodes << " nodes)." << endl;
+        } else {
+            if (!JSON_MODE) cout << "Warning: trie.bin not found. Autocomplete disabled." << endl;
+        }
+    }
+
+    // --- JSON HELPERS ---
+    string escapeJson(const string& s) {
+        string res = "";
+        for (char c : s) {
+            if (c == '"') res += "\\\"";
+            else if (c == '\\') res += "\\\\";
+            else if (c == '\b') res += "\\b";
+            else if (c == '\f') res += "\\f";
+            else if (c == '\n') res += "\\n";
+            else if (c == '\r') res += "\\r";
+            else if (c == '\t') res += "\\t";
+            else res += c;
+        }
+        return res;
+    }
+
+    void printJsonResults(const vector<Result>& results, long long searchTimeMs) {
+        cout << "{ \"time_ms\": " << searchTimeMs << ", \"results\": [";
+        for (size_t i = 0; i < results.size(); ++i) {
+            uint32_t id = results[i].docID;
+            if (id >= metadata.size()) continue;
+
+            const DocInfo& doc = metadata[id];
+            cout << "{";
+            cout << "\"id\": \"" << escapeJson(doc.originalID) << "\",";
+            cout << "\"title\": \"" << escapeJson(doc.title) << "\",";
+            cout << "\"authors\": \"" << escapeJson(doc.authors) << "\",";
+            cout << "\"category\": \"" << escapeJson(doc.category) << "\",";
+            cout << "\"date\": \"" << escapeJson(doc.date) << "\",";
+            cout << "\"score\": " << results[i].score;
+            cout << "}";
+            if (i < results.size() - 1) cout << ",";
+        }
+        cout << "] }" << endl;
+    }
+    
+    void printJsonSuggestions(const vector<string>& suggestions) {
+        cout << "{ \"suggestions\": [";
+        for (size_t i = 0; i < suggestions.size(); ++i) {
+            cout << "\"" << escapeJson(suggestions[i]) << "\"";
+            if (i < suggestions.size() - 1) cout << ",";
+        }
+        cout << "] }" << endl;
     }
 
     // --- BARREL FETCH (Standard) ---
@@ -140,79 +230,125 @@ public:
         return results;
     }
 
-    // --- UPDATED QUERY FUNCTION (AND LOGIC) ---
+    // --- OPTIMIZED QUERY FUNCTION (VECTOR INTERSECTION) ---
     vector<Result> query(string q, string categoryFilter = "", bool sortByDate = false) {
         
+        // 1. Tokenize & Unique
         vector<string> rawTokens = Tokenize::tokenize(q);
         if (rawTokens.empty()) return {};
 
-        // 1. Unique Tokens (handle "data data structures" -> "data", "structures")
         vector<string> tokens;
         sort(rawTokens.begin(), rawTokens.end());
         unique_copy(rawTokens.begin(), rawTokens.end(), back_inserter(tokens));
+
+        // 2. Fetch All Posting Lists & Calculate IDFs
+        struct QueryTerm {
+            double idf;
+            vector<Posting> postings;
+        };
         
-        // 2. Short-Circuit: If any term is missing from lexicon, Intersection is EMPTY.
+        vector<QueryTerm> queryTerms;
+        queryTerms.reserve(tokens.size());
+
         for (const string& token : tokens) {
             if (lexicon.find(token) == lexicon.end()) {
-                // If "machine" exists but "learning" doesn't, "machine AND learning" is empty.
-                return {}; 
+                return {}; // Short-circuit: AND logic requires all terms
             }
+            
+            vector<Posting> p = fetchPostings(lexicon[token]);
+            if (p.empty()) return {}; // Safety check
+
+            double n = (double)p.size();
+            double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
+            
+            queryTerms.push_back({idf, move(p)});
         }
 
-        unordered_map<uint32_t, int> docMatchCounts;
-        unordered_map<uint32_t, double> docScores;
-        int requiredMatches = tokens.size();
+        // 3. Optimization: Sort by List Size (Shortest First)
+        // This minimizes the initial candidate set and speeds up intersection.
+        sort(queryTerms.begin(), queryTerms.end(), [](const QueryTerm& a, const QueryTerm& b) {
+            return a.postings.size() < b.postings.size();
+        });
 
-        // 3. Process Terms
-        for (const string& token : tokens) {
-            int id = lexicon[token];
-            vector<Posting> postings = fetchPostings(id);
+        // 4. Vector Intersection (The Core Optimization)
+        // Initialize candidates with the shortest list's docIDs
+        vector<uint32_t> candidates;
+        candidates.reserve(queryTerms[0].postings.size());
+        for (const auto& p : queryTerms[0].postings) candidates.push_back(p.docID);
+
+        // Intersect with remaining lists
+        for (size_t i = 1; i < queryTerms.size(); ++i) {
+            if (candidates.empty()) break; // No matches possible
+
+            vector<uint32_t> nextCandidates;
+            nextCandidates.reserve(candidates.size()); // Heuristic: can't grow
+
+            const vector<Posting>& currentList = queryTerms[i].postings;
             
-            // Optimization: If a posting list is empty (should be caught by lexicon check, but safety)
-            if (postings.empty()) return {};
-
-             double n = (double)postings.size();
-             double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
-
-             for (const auto& p : postings) {
-                 // Optimization: Score calculation
-                 double tf = (double)p.freq;
-                 double dl = (double)docLengths[p.docID];
-                 double num = tf * (K1 + 1);
-                 double den = tf + K1 * (1 - B + B * (dl / avgDL));
-                 
-                 // Accumulate Score
-                 docScores[p.docID] += idf * (num / den);
-                 
-                 // Track Match Count
-                 docMatchCounts[p.docID]++;
-             }
-        }
-
-        // 4. Filter & Rank
-        vector<Result> finalRes;
-        for (auto& pair : docScores) {
-            uint32_t docID = pair.first;
+            // Two-Pointer Intersection (works because both are sorted by docID)
+            size_t p1 = 0;
+            size_t p2 = 0;
             
-            // CRITICAL: Intersection Check
-            if (docMatchCounts[docID] == requiredMatches) {
-                
-                // Check Category Filter
-                if (!categoryFilter.empty()) {
-                    if (docID < metadata.size()) {
-                        if (metadata[docID].category.find(categoryFilter) == string::npos) {
-                            continue;
-                        }
-                    }
+            while (p1 < candidates.size() && p2 < currentList.size()) {
+                if (candidates[p1] < currentList[p2].docID) {
+                    p1++;
+                } else if (candidates[p1] > currentList[p2].docID) {
+                    p2++;
+                } else {
+                    // Match found!
+                    nextCandidates.push_back(candidates[p1]);
+                    p1++;
+                    p2++;
                 }
-
-                // Add PageRank
-                double finalScore = pair.second + (pageRankScores[docID] * PAGERANK_WEIGHT);
-                finalRes.push_back({docID, finalScore});
             }
+            candidates = nextCandidates;
         }
-        
-        // --- SORTING STEP ---
+
+        if (candidates.empty()) return {};
+
+        // 5. Scoring (Only for Survivors)
+        vector<Result> finalRes;
+        finalRes.reserve(candidates.size());
+
+        for (uint32_t docID : candidates) {
+            double docScore = 0.0;
+            
+            // Calculate score for each term
+            for (const auto& term : queryTerms) {
+                // Find freq of this term in this doc
+                // Since we need random access now, we use binary search (lower_bound)
+                // Note: Linear scan might be faster if k is small, but lower_bound is robust.
+                
+                auto it = lower_bound(term.postings.begin(), term.postings.end(), docID, 
+                    [](const Posting& p, uint32_t id) { return p.docID < id; });
+                
+                if (it != term.postings.end() && it->docID == docID) {
+                    double tf = (double)it->freq;
+                    double dl = (double)docLengths[docID];
+                    
+                    double num = tf * (K1 + 1);
+                    double den = tf + K1 * (1 - B + B * (dl / avgDL));
+                    
+                    docScore += term.idf * (num / den);
+                }
+            }
+
+            // Category Filter
+            if (!categoryFilter.empty()) {
+                if (docID >= metadata.size() || metadata[docID].category.find(categoryFilter) == string::npos) {
+                    continue; 
+                }
+            }
+
+            // Final Ranking Score
+            if (docID < pageRankScores.size()) {
+                 docScore += (pageRankScores[docID] * PAGERANK_WEIGHT);
+            }
+            
+            finalRes.push_back({docID, docScore});
+        }
+
+        // 6. Sort Results
         if (sortByDate) {
             sort(finalRes.begin(), finalRes.end(), [&](const Result& a, const Result& b) {
                 string dateA = (a.docID < metadata.size()) ? metadata[a.docID].date : "0000";
@@ -229,31 +365,125 @@ public:
         return finalRes;
     }
 
-    void printDoc(uint32_t id, double score) {
-        if (id >= metadata.size()) return;
-        const DocInfo& doc = metadata[id];
+    // --- AUTOCOMPLETE: DFS HELPER ---
+    void collectSuggestions(int32_t nodeIdx, string currentWord, vector<pair<int, string>>& candidates) {
+        if (nodeIdx == -1 || nodeIdx >= trie.size()) return;
+
+        const FlatNode& node = trie[nodeIdx]; // Reference to avoid copy overhead if struct grows
+
+        // 1. Visit Self
+        if (node.frequency > 0) { // Is a valid word
+            candidates.push_back({node.frequency, currentWord});
+        }
+
+        // 2. Visit Child (Deeper)
+        if (node.childIndex != -1) {
+             int32_t child = node.childIndex;
+             while (child != -1) {
+                 collectSuggestions(child, currentWord + trie[child].key, candidates);
+                 child = trie[child].siblingIndex;
+             }
+        }
+    }
+
+    // --- AUTOCOMPLETE: MAIN FUNCTION ---
+    vector<string> suggest(string prefix) {
+        if (trie.empty()) return {};
+        
+        // Normalize prefix to lowercase
+        transform(prefix.begin(), prefix.end(), prefix.begin(), ::tolower);
+
+        int32_t curr = 0; 
+        if (trie[0].childIndex == -1) return {};
+        curr = trie[0].childIndex;
+
+        // 1. Traverse to Prefix
+        for (size_t i = 0; i < prefix.size(); ++i) {
+            char c = prefix[i];
+            bool found = false;
+            while (curr != -1) {
+                if (trie[curr].key == c) {
+                    found = true;
+                    // Move to child if NOT the last char of prefix
+                    if (i < prefix.size() - 1) { 
+                         curr = trie[curr].childIndex;
+                    }
+                    break;
+                }
+                curr = trie[curr].siblingIndex; 
+            }
+            if (!found) return {}; 
+        }
+        
+        // 2. Collect ALL Candidates
+        vector<pair<int, string>> candidates;
+        
+        // Check prefix itself
+        if (trie[curr].frequency > 0) {
+            candidates.push_back({trie[curr].frequency, prefix});
+        }
+        
+        // Recurse
+        int32_t child = trie[curr].childIndex;
+        while (child != -1) {
+            collectSuggestions(child, prefix + trie[child].key, candidates);
+            child = trie[child].siblingIndex;
+        }
+
+        // 3. Sort by Frequency (Descending)
+        sort(candidates.begin(), candidates.end(), [](const pair<int, string>& a, const pair<int, string>& b) {
+            return a.first > b.first; 
+        });
+
+        // 4. Return Top 5
+        vector<string> results;
+        int count = 0;
+        for (const auto& p : candidates) {
+            results.push_back(p.second);
+            count++;
+            if (count >= 5) break;
+        }
+        return results;
+    }
+
+    void printDoc(uint32_t docID, double score) {
+        if (docID >= metadata.size()) return;
+        const DocInfo& doc = metadata[docID];
         
         cout << "------------------------------------------------" << endl;
         cout << " [" << score << "] " << doc.title << endl;
         cout << "       Authors: " << doc.authors.substr(0, 80) << (doc.authors.size()>80?"...":"") << endl;
         cout << "       Category: " << doc.category << " | Date: " << doc.date << endl;
-        
-        // --- LINK GENERATION ---
         cout << "       Link: https://arxiv.org/abs/" << doc.originalID << endl;
     }
 };
 
-int main() {
-    BarrelSearcher engine;
+int main(int argc, char* argv[]) {
+    // --- ARGUMENT PARSING ---
+    bool jsonMode = false;
+    uint32_t limit = 0;
+
+    for (int i = 1; i < argc; i++) {
+        string arg = argv[i];
+        if (arg == "--json") jsonMode = true;
+        if (arg == "--limit" && i + 1 < argc) {
+            limit = stoi(argv[++i]);
+        }
+    }
+
+    BarrelSearcher engine(jsonMode, limit);
     string input;
     
-    cout << "\n=== arXiv Search Engine ===" << endl;
-    cout << "Options: /date (sort by date), /cat:cs.AI (filter by category)" << endl;
+    if (!jsonMode) {
+        cout << "\n=== arXiv Search Engine ===" << endl;
+        cout << "Options: /suggest <prefix>, /date, /cat:cs.AI" << endl;
+    }
 
     while(true) {
-        // --- HOT SWAP LOGIC ---
+        // --- HOT SWAP ---
         if (fs::exists("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal")) {
-            cout << "\n[Alignment] HOT SWAP DETECTED!" << endl;
+            if (!jsonMode) cout << "\n[Alignment] HOT SWAP DETECTED!" << endl;
+            
             ifstream sig("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal");
             string newDir;
             if (getline(sig, newDir) && !newDir.empty()) {
@@ -261,53 +491,77 @@ int main() {
                  if (BARREL_DIR.back() != '\\' && BARREL_DIR.back() != '/') {
                     BARREL_DIR += "\\";
                 }
-                cout << "Switching Barrels -> " << BARREL_DIR << endl;
+                if (!jsonMode) cout << "Switching Barrels -> " << BARREL_DIR << endl;
                 engine.loadMetadata();
             }
             sig.close();
             fs::remove("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal");
-            cout << "Hot Swap Complete." << endl;
+            if (!jsonMode) cout << "Hot Swap Complete." << endl;
         }
 
-        cout << "\nQuery> ";
-        if (!getline(cin, input)) break; // Stop on EOF or error
+        if (!jsonMode) cout << "\nQuery> ";
+        if (!getline(cin, input)) break; 
         if (input == "exit") break;
 
+        // --- AUTOCOMPLETE ---
+        if (input.rfind("/suggest ", 0) == 0) {
+            string prefix = input.substr(9);
+            auto suggestions = engine.suggest(prefix);
+            
+            if (jsonMode) {
+                engine.printJsonSuggestions(suggestions);
+            } else {
+                cout << "Suggestions: ";
+                for (const auto& s : suggestions) cout << s << ", ";
+                cout << endl;
+            }
+            continue;
+        }
+
+        // --- SEARCH ---
         bool sortDate = false;
         string catFilter = "";
         string cleanQuery = "";
 
-        // Simple Command Parsing
-        // Example Input: "machine learning /date /cat:cs.LG"
+        // Command Parsing
         stringstream ss(input);
         string word;
         while(ss >> word) {
             if (word == "/date") {
                 sortDate = true;
-            } else if (word.rfind("/cat:", 0) == 0) { // Starts with /cat:
-                catFilter = word.substr(5); // Extract "cs.LG"
+            } else if (word.rfind("/cat:", 0) == 0) { 
+                catFilter = word.substr(5); 
             } else {
                 cleanQuery += word + " ";
             }
         }
 
-        if (cleanQuery.empty()) continue;
+        if (cleanQuery.empty()) {
+             if (jsonMode) cout << "{ \"results\": [] }" << endl;
+             continue;
+        }
+        
+        if (cleanQuery.back() == ' ') cleanQuery.pop_back();
 
-        cout << "Searching for: '" << cleanQuery << "'";
-        if (!catFilter.empty()) cout << " [Filter: " << catFilter << "]";
-        if (sortDate) cout << " [Sorted by Date]";
-        cout << "..." << endl;
+        if (!jsonMode) {
+            cout << "Searching for: '" << cleanQuery << "'";
+            if (!catFilter.empty()) cout << " [Filter: " << catFilter << "]";
+            if (sortDate) cout << " [Sorted by Date]";
+            cout << "..." << endl;
+        }
 
         auto start = chrono::high_resolution_clock::now();
-        // CALL THE UPDATED FUNCTION
         auto results = engine.query(cleanQuery, catFilter, sortDate);
         auto end = chrono::high_resolution_clock::now();
+        long long duration = chrono::duration_cast<chrono::milliseconds>(end - start).count();
         
-        cout << "Found " << results.size() << " results in " 
-             << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms." << endl;
-        
-        for (const auto& r : results) {
-            engine.printDoc(r.docID, r.score);
+        if (jsonMode) {
+            engine.printJsonResults(results, duration);
+        } else {
+            cout << "Found " << results.size() << " results in " << duration << "ms." << endl;
+            for (const auto& r : results) {
+                engine.printDoc(r.docID, r.score);
+            }
         }
     }
     return 0;
