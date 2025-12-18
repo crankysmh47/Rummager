@@ -1,0 +1,29 @@
+# Deploying Aether with Docker
+
+## Prerequisites
+- Docker Installed (Desktop or Engine)
+
+## Quick Start (Docker Compose)
+1.  **Build and Run**:
+    ```bash
+    docker-compose up --build
+    ```
+    This will compile the C++ engine, build the React frontend, and verify all data files.
+
+2.  **Access**:
+    Open [http://localhost:8000](http://localhost:8000)
+
+## Manual Docker Run
+1.  **Build Image**:
+    ```bash
+    docker build -t aether-engine .
+    ```
+
+2.  **Run Container**:
+    ```bash
+    docker run -p 8000:8000 aether-engine
+    ```
+
+## Notes
+-   **Data Size**: The Docker image might be large because it includes the index files (`*.bin`). 
+-   **Volumes**: Edit `docker-compose.yml` to mount data files from your host instead of copying them in, if you frequently update the index.

@@ -1,19 +1,64 @@
-# --- Ignore Data & Indices ---
-*.bin
-*.txt
-*.json
-barrels/
-barrels_FULL/
-
-# --- Ignore Executables & Builds ---
-*.exe
-*.o
-*.obj
-
-# --- Ignore Python Cache ---
+# --- Dependencies & Environment ---
+node_modules/
+venv/
+.venv/
 __pycache__/
 *.pyc
 
-# --- Keep these specific text files if you want, but usually data is ignored ---
+# --- Data & Large Indices (Critical Exclusions) ---
+*.bin
+*.txt
+*.json
+!package.json
+!tsconfig.json
+!jsconfig.json
+!frontend/package.json
 !CMakeLists.txt
+!doc_metadata.txt
+# Note: Keeping doc_metadata.txt only if small enough? 
+# User said "massive data files (*.bin, *.txt...)" so likely exclude ALL txt except configs.
+# I will exclude defaults and whitelist specific ones.
+
+# Re-exclude all txt/json/bin
+*.bin
+*.txt
+*.json
+
+# Allow Config & Source specifics
+!package.json
+!frontend/package.json
+!tsconfig.json
+!vite.config.js
+!tailwind.config.js
+!postcss.config.js
+!eslint.config.js
+!.gitignore
 !README.md
+!PARTNER_GUIDE.md
+!expose_server.txt
+!deploy_docker.txt
+!requirements.txt
+!src/**/*.txt
+!frontend/**/*.json
+
+# --- Barrels ---
+barrels/
+barrels_FULL/
+
+# --- Build Artifacts ---
+*.exe
+*.o
+*.obj
+dist/
+build/
+.vscode/
+.idea/
+*.log
+
+
+clean_project.bat
+get-pip.py
+PARTNER_GUIDE.md
+!stress_test.py
+!stress_1.input
+!stress_2.input

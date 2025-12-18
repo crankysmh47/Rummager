@@ -27,3 +27,28 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #e11d48; 
 }
+/* Nebula Background */
+@keyframes nebula-move {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.bg-nebula {
+  background: radial-gradient(circle at 50% 50%, #1a0505 0%, #0a0a0a 100%),
+              linear-gradient(45deg, #2a0a0a 0%, #000000 100%);
+  background-size: 200% 200%;
+  animation: nebula-move 20s ease infinite;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+  border-color: rgba(244, 63, 94, 0.5);
+}

@@ -1,42 +1,54 @@
-# BASE IMAGE
+# Use a multi-stage build to reduce image size
+
+# --- Stage 1: Build Frontend ---
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+# Copy package files first for better caching
+COPY frontend/package*.json ./
+RUN npm ci
+# Copy source code
+COPY frontend/ ./
+# Build React App
+RUN npm run build
+
+# --- Stage 2: Build Backend & Final Image ---
 FROM python:3.9-slim
 
-# SYSTEM DEPENDENCIES
+# Install system dependencies for C++ compilation
 RUN apt-get update && apt-get install -y \
     g++ \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# WORKDIR
 WORKDIR /app
 
-# BUILD C++ ENGINE
-COPY searchengine.cpp .
-COPY common.h .
-# (Copy other C++ sources if needed)
+# Copy C++ Source
+COPY *.cpp *.h ./
+
+# Compile C++ Engine (Optimized)
 RUN g++ -O3 -std=c++17 searchengine.cpp -o searchengine
+RUN g++ -O3 -std=c++17 trie_builder.cpp -o trie_builder
 
-# COPY DATA
-COPY lexicon.bin .
-COPY forward_index.bin .
-COPY inverted_index.bin .
-COPY doc_lengths.bin .
-COPY pagerank.txt .
-COPY doc_metadata.txt .
-COPY trie.bin .
-
-# PYTHON DEPS
+# Install Python Requirements
 COPY requirements.txt .
-RUN pip install flask flask-cors requests gunicorn
+# If requirements.txt doesn't exist, install manually
+RUN pip install --no-cache-dir flask flask-cors requests uvicorn
 
-# BACKEND CODE
+# Copy Backend Scripts
 COPY main.py .
+# Copy Data Files (Ensure .dockerignore excludes heavy ones if desired, but we need them for search)
+# CAUTION: If data is 2.9M files, this COPY will be huge. 
+# Best practice: Mount data as a volume. But for "one-click" demo, we might copy specific bins.
+# We will copy everything not ignored by .dockerignore (which should exclude venv, etc)
+COPY *.bin ./
+COPY doc_metadata.txt ./
+COPY barrels/ ./barrels/
 
-# STATIC PRESENCE
-COPY frontend/dist /app/static
+# Copy Frontend Build from Stage 1 to 'static'
+COPY --from=frontend-builder /app/frontend/dist ./static
 
-# ENVIRONMENT VARIABLES
-ENV RAILWAY_ENVIRONMENT=true
+# Expose Port
+EXPOSE 8000
 
-# RUN
-CMD ["gunicorn", "-w", "4", "main:app", "-b", "0.0.0.0:8000"]
+# Run
+CMD ["python", "main.py"]

@@ -1,0 +1,46 @@
+# Exposing Aether Local Server to the World
+
+To use your local PC (with the full dataset) as the backend for a remote user, you need to create a secure tunnel. We recommend **Cloudflare Tunnel** (free, persistent) or **ngrok** (easy, temporary).
+
+## Option 1: Cloudflare Tunnel (Recommended)
+Cloudflare Tunnel (formerly Argo) is fast, free, and doesn't require port forwarding on your router.
+
+1.  **Install `cloudflared`**:
+    -   Download `cloudflared-windows-amd64.exe` from Cloudflare's GitHub releases.
+    -   Rename it to `cloudflared.exe` and place it in this folder.
+
+2.  **Run the Tunnel**:
+    Open PowerShell in this directory and run:
+    ```powershell
+    .\cloudflared.exe tunnel --url http://localhost:8000
+    ```
+
+3.  **Get the URL**:
+    -   Look for a URL ending in `.trycloudflare.com` in the terminal output.
+    -   **Copy this URL**.
+
+4.  **Connect Frontend**:
+    -   Open the React App (or deployed Railway app).
+    -   Toggle the Switch to **"Server: Cloud"**.
+    -   (Note: In a production setup, you would hardcode this URL in `App.jsx` as `CLOUD_API` or pass it as an env var).
+
+---
+
+## Option 2: ngrok (Easiest)
+1.  **Install ngrok**:
+    -   Sign up at [ngrok.com](https://ngrok.com) and download.
+    -   Run `ngrok config add-authtoken <your-token>`.
+
+2.  **Start Tunnel**:
+    ```powershell
+    ngrok http 8000
+    ```
+
+3.  **Copy the Forwarding URL**:
+    -   You will see something like `https://a1b2-c3d4.ngrok-free.app`.
+    -   Use this as your API endpoint.
+
+---
+
+## Important Note regarding CORS
+If the frontend rejects the connection, ensure `CORS` in `main.py` is allowing the traffic. Currently, `CORS(app)` allows all origins (`*`), so it should work out of the box.

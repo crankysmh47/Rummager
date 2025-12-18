@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  aether-engine:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount data dynamically so we don't bake 4GB into the image
+      # Only mount if you want persistence or hot-reloading
+      - ./barrels:/app/barrels
+      # - ./doc_metadata.txt:/app/doc_metadata.txt
+      # - ./inverted_index.bin:/app/inverted_index.bin
+    environment:
+      - RAILWAY_ENVIRONMENT=true
+      - PAGER=cat
+    restart: unless-stopped
