@@ -76,7 +76,11 @@ public:
         docLengths.clear();
         pageRankScores.clear();
         metadata.clear();
+<<<<<<< HEAD
         trie.clear(); 
+=======
+        trie.clear(); // NEW
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
 
         // 1. Lexicon (Standard)
         ifstream lexFile(LEXICON_FILE, ios::binary);
@@ -97,12 +101,15 @@ public:
         ifstream lenFile(LENGTHS_FILE, ios::binary);
         if (lenFile) {
             lenFile.read((char*)&totalDocs, sizeof(totalDocs));
+<<<<<<< HEAD
             
             // LIMIT LOGIC
             if (DOC_LIMIT > 0 && DOC_LIMIT < totalDocs) {
                 totalDocs = DOC_LIMIT;
             }
 
+=======
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
             docLengths.resize(totalDocs);
             lenFile.read((char*)docLengths.data(), totalDocs * sizeof(uint32_t));
             lenFile.close();
@@ -155,6 +162,7 @@ public:
             tFile.seekg(0, ios::beg);
             
             size_t numNodes = size / sizeof(FlatNode);
+<<<<<<< HEAD
             trie.resize(numNodes);
             tFile.read((char*)trie.data(), size);
             if (!JSON_MODE) cout << "Loaded Autocomplete Index (" << numNodes << " nodes)." << endl;
@@ -206,6 +214,15 @@ public:
             if (i < suggestions.size() - 1) cout << ",";
         }
         cout << "] }" << endl;
+=======
+            size_t numNodes = size / sizeof(FlatNode);
+            trie.resize(numNodes);
+            tFile.read((char*)trie.data(), size);
+            cout << "Loaded Autocomplete Index (" << numNodes << " nodes)." << endl;
+        } else {
+            cout << "Warning: trie.bin not found. Autocomplete disabled." << endl;
+        }
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
     }
 
     // --- BARREL FETCH (Standard) ---
@@ -446,9 +463,15 @@ public:
         return results;
     }
 
+<<<<<<< HEAD
     void printDoc(uint32_t docID, double score) {
         if (docID >= metadata.size()) return;
         const DocInfo& doc = metadata[docID];
+=======
+    void printDoc(uint32_t id, double score) {
+        if (id >= metadata.size()) return;
+        const DocInfo& doc = metadata[id];
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
         
         cout << "------------------------------------------------" << endl;
         cout << " [" << score << "] " << doc.title << endl;
@@ -474,10 +497,15 @@ int main(int argc, char* argv[]) {
     BarrelSearcher engine(jsonMode, limit);
     string input;
     
+<<<<<<< HEAD
     if (!jsonMode) {
         cout << "\n=== arXiv Search Engine ===" << endl;
         cout << "Options: /suggest <prefix>, /date, /cat:cs.AI" << endl;
     }
+=======
+    cout << "\n=== arXiv Search Engine ===" << endl;
+    cout << "Options: /suggest <prefix>, /date, /cat:cs.AI" << endl;
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
 
     while(true) {
         // --- HOT SWAP ---
@@ -503,6 +531,7 @@ int main(int argc, char* argv[]) {
         if (!getline(cin, input)) break; 
         if (input == "exit") break;
 
+<<<<<<< HEAD
         // --- AUTOCOMPLETE ---
         if (input.rfind("/suggest ", 0) == 0) {
             string prefix = input.substr(9);
@@ -519,6 +548,18 @@ int main(int argc, char* argv[]) {
         }
 
         // --- SEARCH ---
+=======
+        // --- NEW: AUTOCOMPLETE COMMAND ---
+        if (input.rfind("/suggest ", 0) == 0) {
+            string prefix = input.substr(9);
+            auto suggestions = engine.suggest(prefix);
+            cout << "Suggestions: ";
+            for (const auto& s : suggestions) cout << s << ", ";
+            cout << endl;
+            continue;
+        }
+
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
         bool sortDate = false;
         string catFilter = "";
         string cleanQuery = "";
@@ -536,11 +577,17 @@ int main(int argc, char* argv[]) {
             }
         }
 
+<<<<<<< HEAD
         if (cleanQuery.empty()) {
              if (jsonMode) cout << "{ \"results\": [] }" << endl;
              continue;
         }
         
+=======
+        if (cleanQuery.empty()) continue;
+        
+        // Strip trailing space
+>>>>>>> 0b681bb251d3556ddced999d9877c779bbbd365a
         if (cleanQuery.back() == ' ') cleanQuery.pop_back();
 
         if (!jsonMode) {
