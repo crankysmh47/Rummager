@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <chrono>
 #include <filesystem> // C++17
+#include <queue> // NEW
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -18,8 +19,9 @@ namespace fs = std::filesystem;
 string BARREL_DIR = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels\\";
 const string LEXICON_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\lexicon.bin";
 const string LENGTHS_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_lengths.bin";
-const string META_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_metadata.txt"; // The new file
+const string META_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\doc_metadata.txt";
 const string PAGERANK_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\pagerank_scores.txt";
+const string TRIE_FILE = "C:\\Users\\Hank47\\Sem3\\Rummager\\trie.bin"; // NEW
 
 const uint32_t WORDS_PER_BARREL = 50000;
 const double K1 = 1.5;
@@ -38,14 +40,22 @@ struct DocInfo {
     string date;
 };
 
+// NEW: Flat Trie Node
+struct FlatNode {
+    char key;
+    int32_t frequency; // 0 if not end of word
+    int32_t childIndex; // -1 if no children
+    int32_t siblingIndex; // -1 if no next sibling
+    bool isEnd;
+};
+
 class BarrelSearcher {
 private:
     unordered_map<string, int> lexicon;
     vector<uint32_t> docLengths;
     vector<double> pageRankScores;
-    
-    // NEW: Vector of Structs instead of just strings
     vector<DocInfo> metadata;
+    vector<FlatNode> trie; // NEW
     
     double avgDL;
     uint32_t totalDocs;
@@ -60,26 +70,31 @@ public:
         docLengths.clear();
         pageRankScores.clear();
         metadata.clear();
+        trie.clear(); // NEW
 
         // 1. Lexicon (Standard)
         ifstream lexFile(LEXICON_FILE, ios::binary);
-        uint32_t totalWords;
-        lexFile.read((char*)&totalWords, sizeof(totalWords));
-        for (uint32_t i = 0; i < totalWords; i++) {
-            uint32_t len;
-            lexFile.read((char*)&len, sizeof(len));
-            string word(len, ' ');
-            lexFile.read(&word[0], len);
-            lexicon[word] = i;
+        if (lexFile) {
+            uint32_t totalWords;
+            lexFile.read((char*)&totalWords, sizeof(totalWords));
+            for (uint32_t i = 0; i < totalWords; i++) {
+                uint32_t len;
+                lexFile.read((char*)&len, sizeof(len));
+                string word(len, ' ');
+                lexFile.read(&word[0], len);
+                lexicon[word] = i;
+            }
+            lexFile.close();
         }
-        lexFile.close();
 
         // 2. Lengths (Standard)
         ifstream lenFile(LENGTHS_FILE, ios::binary);
-        lenFile.read((char*)&totalDocs, sizeof(totalDocs));
-        docLengths.resize(totalDocs);
-        lenFile.read((char*)docLengths.data(), totalDocs * sizeof(uint32_t));
-        lenFile.close();
+        if (lenFile) {
+            lenFile.read((char*)&totalDocs, sizeof(totalDocs));
+            docLengths.resize(totalDocs);
+            lenFile.read((char*)docLengths.data(), totalDocs * sizeof(uint32_t));
+            lenFile.close();
+        }
         
         long long sum = 0;
         for (uint32_t l : docLengths) sum += l;
@@ -115,6 +130,23 @@ public:
             while(prFile >> id >> score) {
                 if(id < (int)totalDocs) pageRankScores[id] = score;
             }
+        }
+
+        // 5. Autocomplete Trie (NEW)
+        ifstream tFile(TRIE_FILE, ios::binary);
+        if (tFile) {
+            // Get size
+            tFile.seekg(0, ios::end);
+            size_t size = tFile.tellg();
+            tFile.seekg(0, ios::beg);
+            
+            size_t numNodes = size / sizeof(FlatNode);
+            size_t numNodes = size / sizeof(FlatNode);
+            trie.resize(numNodes);
+            tFile.read((char*)trie.data(), size);
+            cout << "Loaded Autocomplete Index (" << numNodes << " nodes)." << endl;
+        } else {
+            cout << "Warning: trie.bin not found. Autocomplete disabled." << endl;
         }
     }
 
@@ -275,6 +307,87 @@ public:
         return finalRes;
     }
 
+    // --- AUTOCOMPLETE: DFS HELPER ---
+    void collectSuggestions(int32_t nodeIdx, string currentWord, vector<pair<int, string>>& candidates) {
+        if (nodeIdx == -1 || nodeIdx >= trie.size()) return;
+
+        const FlatNode& node = trie[nodeIdx]; // Reference to avoid copy overhead if struct grows
+
+        // 1. Visit Self
+        if (node.frequency > 0) { // Is a valid word
+            candidates.push_back({node.frequency, currentWord});
+        }
+
+        // 2. Visit Child (Deeper)
+        if (node.childIndex != -1) {
+             int32_t child = node.childIndex;
+             while (child != -1) {
+                 collectSuggestions(child, currentWord + trie[child].key, candidates);
+                 child = trie[child].siblingIndex;
+             }
+        }
+    }
+
+    // --- AUTOCOMPLETE: MAIN FUNCTION ---
+    vector<string> suggest(string prefix) {
+        if (trie.empty()) return {};
+        
+        // Normalize prefix to lowercase
+        transform(prefix.begin(), prefix.end(), prefix.begin(), ::tolower);
+
+        int32_t curr = 0; 
+        if (trie[0].childIndex == -1) return {};
+        curr = trie[0].childIndex;
+
+        // 1. Traverse to Prefix
+        for (size_t i = 0; i < prefix.size(); ++i) {
+            char c = prefix[i];
+            bool found = false;
+            while (curr != -1) {
+                if (trie[curr].key == c) {
+                    found = true;
+                    // Move to child if NOT the last char of prefix
+                    if (i < prefix.size() - 1) { 
+                         curr = trie[curr].childIndex;
+                    }
+                    break;
+                }
+                curr = trie[curr].siblingIndex; 
+            }
+            if (!found) return {}; 
+        }
+        
+        // 2. Collect ALL Candidates
+        vector<pair<int, string>> candidates;
+        
+        // Check prefix itself
+        if (trie[curr].frequency > 0) {
+            candidates.push_back({trie[curr].frequency, prefix});
+        }
+        
+        // Recurse
+        int32_t child = trie[curr].childIndex;
+        while (child != -1) {
+            collectSuggestions(child, prefix + trie[child].key, candidates);
+            child = trie[child].siblingIndex;
+        }
+
+        // 3. Sort by Frequency (Descending)
+        sort(candidates.begin(), candidates.end(), [](const pair<int, string>& a, const pair<int, string>& b) {
+            return a.first > b.first; 
+        });
+
+        // 4. Return Top 5
+        vector<string> results;
+        int count = 0;
+        for (const auto& p : candidates) {
+            results.push_back(p.second);
+            count++;
+            if (count >= 5) break;
+        }
+        return results;
+    }
+
     void printDoc(uint32_t id, double score) {
         if (id >= metadata.size()) return;
         const DocInfo& doc = metadata[id];
@@ -294,7 +407,7 @@ int main() {
     string input;
     
     cout << "\n=== arXiv Search Engine ===" << endl;
-    cout << "Options: /date (sort by date), /cat:cs.AI (filter by category)" << endl;
+    cout << "Options: /suggest <prefix>, /date, /cat:cs.AI" << endl;
 
     while(true) {
         // --- HOT SWAP LOGIC ---
@@ -319,6 +432,16 @@ int main() {
         if (!getline(cin, input)) break; // Stop on EOF or error
         if (input == "exit") break;
 
+        // --- NEW: AUTOCOMPLETE COMMAND ---
+        if (input.rfind("/suggest ", 0) == 0) {
+            string prefix = input.substr(9);
+            auto suggestions = engine.suggest(prefix);
+            cout << "Suggestions: ";
+            for (const auto& s : suggestions) cout << s << ", ";
+            cout << endl;
+            continue;
+        }
+
         bool sortDate = false;
         string catFilter = "";
         string cleanQuery = "";
@@ -338,6 +461,9 @@ int main() {
         }
 
         if (cleanQuery.empty()) continue;
+        
+        // Strip trailing space
+        if (cleanQuery.back() == ' ') cleanQuery.pop_back();
 
         cout << "Searching for: '" << cleanQuery << "'";
         if (!catFilter.empty()) cout << " [Filter: " << catFilter << "]";
