@@ -24,6 +24,12 @@ def start_engine():
         args.extend(["--limit", DOC_LIMIT])
     
     print(f"Starting Search Engine: {' '.join(args)}")
+    
+    if not os.path.exists(SEARCH_ENGINE_PATH):
+        print(f"CRITICAL ERROR: Search engine binary not found at {SEARCH_ENGINE_PATH}")
+        print(f"Current Directory Contents: {os.listdir('.')}")
+        return
+
     engine_process = subprocess.Popen(
         args,
         stdin=subprocess.PIPE,
