@@ -9,7 +9,7 @@ const PAGE_SIZE = 20
 
 function App() {
   // --- STATE ---
-  const [serverMode, setServerMode] = useState("auto") // auto, local, cloud
+  const [serverMode, setServerMode] = useState("local") // auto, local, cloud
   const [apiBase, setApiBase] = useState(LOCAL_API)
   const [health, setHealth] = useState("checking")
 

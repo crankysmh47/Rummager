@@ -12,7 +12,7 @@ CORS(app)
 # --- CONFIGURATION ---
 RAILWAY_ENVIRONMENT = os.getenv("RAILWAY_ENVIRONMENT", "false").lower() == "true"
 SEARCH_ENGINE_PATH = "./searchengine.exe" if os.name == 'nt' else "./searchengine"
-DOC_LIMIT = "50000" if RAILWAY_ENVIRONMENT else "0"
+DOC_LIMIT = "10000" if RAILWAY_ENVIRONMENT else "0"
 
 engine_process = None
 
