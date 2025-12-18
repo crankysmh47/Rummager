@@ -140,79 +140,125 @@ public:
         return results;
     }
 
-    // --- UPDATED QUERY FUNCTION (AND LOGIC) ---
+    // --- OPTIMIZED QUERY FUNCTION (VECTOR INTERSECTION) ---
     vector<Result> query(string q, string categoryFilter = "", bool sortByDate = false) {
         
+        // 1. Tokenize & Unique
         vector<string> rawTokens = Tokenize::tokenize(q);
         if (rawTokens.empty()) return {};
 
-        // 1. Unique Tokens (handle "data data structures" -> "data", "structures")
         vector<string> tokens;
         sort(rawTokens.begin(), rawTokens.end());
         unique_copy(rawTokens.begin(), rawTokens.end(), back_inserter(tokens));
+
+        // 2. Fetch All Posting Lists & Calculate IDFs
+        struct QueryTerm {
+            double idf;
+            vector<Posting> postings;
+        };
         
-        // 2. Short-Circuit: If any term is missing from lexicon, Intersection is EMPTY.
+        vector<QueryTerm> queryTerms;
+        queryTerms.reserve(tokens.size());
+
         for (const string& token : tokens) {
             if (lexicon.find(token) == lexicon.end()) {
-                // If "machine" exists but "learning" doesn't, "machine AND learning" is empty.
-                return {}; 
+                return {}; // Short-circuit: AND logic requires all terms
             }
+            
+            vector<Posting> p = fetchPostings(lexicon[token]);
+            if (p.empty()) return {}; // Safety check
+
+            double n = (double)p.size();
+            double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
+            
+            queryTerms.push_back({idf, move(p)});
         }
 
-        unordered_map<uint32_t, int> docMatchCounts;
-        unordered_map<uint32_t, double> docScores;
-        int requiredMatches = tokens.size();
+        // 3. Optimization: Sort by List Size (Shortest First)
+        // This minimizes the initial candidate set and speeds up intersection.
+        sort(queryTerms.begin(), queryTerms.end(), [](const QueryTerm& a, const QueryTerm& b) {
+            return a.postings.size() < b.postings.size();
+        });
 
-        // 3. Process Terms
-        for (const string& token : tokens) {
-            int id = lexicon[token];
-            vector<Posting> postings = fetchPostings(id);
+        // 4. Vector Intersection (The Core Optimization)
+        // Initialize candidates with the shortest list's docIDs
+        vector<uint32_t> candidates;
+        candidates.reserve(queryTerms[0].postings.size());
+        for (const auto& p : queryTerms[0].postings) candidates.push_back(p.docID);
+
+        // Intersect with remaining lists
+        for (size_t i = 1; i < queryTerms.size(); ++i) {
+            if (candidates.empty()) break; // No matches possible
+
+            vector<uint32_t> nextCandidates;
+            nextCandidates.reserve(candidates.size()); // Heuristic: can't grow
+
+            const vector<Posting>& currentList = queryTerms[i].postings;
             
-            // Optimization: If a posting list is empty (should be caught by lexicon check, but safety)
-            if (postings.empty()) return {};
-
-             double n = (double)postings.size();
-             double idf = log((totalDocs - n + 0.5) / (n + 0.5) + 1.0);
-
-             for (const auto& p : postings) {
-                 // Optimization: Score calculation
-                 double tf = (double)p.freq;
-                 double dl = (double)docLengths[p.docID];
-                 double num = tf * (K1 + 1);
-                 double den = tf + K1 * (1 - B + B * (dl / avgDL));
-                 
-                 // Accumulate Score
-                 docScores[p.docID] += idf * (num / den);
-                 
-                 // Track Match Count
-                 docMatchCounts[p.docID]++;
-             }
-        }
-
-        // 4. Filter & Rank
-        vector<Result> finalRes;
-        for (auto& pair : docScores) {
-            uint32_t docID = pair.first;
+            // Two-Pointer Intersection (works because both are sorted by docID)
+            size_t p1 = 0;
+            size_t p2 = 0;
             
-            // CRITICAL: Intersection Check
-            if (docMatchCounts[docID] == requiredMatches) {
-                
-                // Check Category Filter
-                if (!categoryFilter.empty()) {
-                    if (docID < metadata.size()) {
-                        if (metadata[docID].category.find(categoryFilter) == string::npos) {
-                            continue;
-                        }
-                    }
+            while (p1 < candidates.size() && p2 < currentList.size()) {
+                if (candidates[p1] < currentList[p2].docID) {
+                    p1++;
+                } else if (candidates[p1] > currentList[p2].docID) {
+                    p2++;
+                } else {
+                    // Match found!
+                    nextCandidates.push_back(candidates[p1]);
+                    p1++;
+                    p2++;
                 }
-
-                // Add PageRank
-                double finalScore = pair.second + (pageRankScores[docID] * PAGERANK_WEIGHT);
-                finalRes.push_back({docID, finalScore});
             }
+            candidates = nextCandidates;
         }
-        
-        // --- SORTING STEP ---
+
+        if (candidates.empty()) return {};
+
+        // 5. Scoring (Only for Survivors)
+        vector<Result> finalRes;
+        finalRes.reserve(candidates.size());
+
+        for (uint32_t docID : candidates) {
+            double docScore = 0.0;
+            
+            // Calculate score for each term
+            for (const auto& term : queryTerms) {
+                // Find freq of this term in this doc
+                // Since we need random access now, we use binary search (lower_bound)
+                // Note: Linear scan might be faster if k is small, but lower_bound is robust.
+                
+                auto it = lower_bound(term.postings.begin(), term.postings.end(), docID, 
+                    [](const Posting& p, uint32_t id) { return p.docID < id; });
+                
+                if (it != term.postings.end() && it->docID == docID) {
+                    double tf = (double)it->freq;
+                    double dl = (double)docLengths[docID];
+                    
+                    double num = tf * (K1 + 1);
+                    double den = tf + K1 * (1 - B + B * (dl / avgDL));
+                    
+                    docScore += term.idf * (num / den);
+                }
+            }
+
+            // Category Filter
+            if (!categoryFilter.empty()) {
+                if (docID >= metadata.size() || metadata[docID].category.find(categoryFilter) == string::npos) {
+                    continue; 
+                }
+            }
+
+            // Final Ranking Score
+            if (docID < pageRankScores.size()) {
+                 docScore += (pageRankScores[docID] * PAGERANK_WEIGHT);
+            }
+            
+            finalRes.push_back({docID, docScore});
+        }
+
+        // 6. Sort Results
         if (sortByDate) {
             sort(finalRes.begin(), finalRes.end(), [&](const Result& a, const Result& b) {
                 string dateA = (a.docID < metadata.size()) ? metadata[a.docID].date : "0000";
