@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import time
+import json
 from threading import Thread
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -36,7 +37,8 @@ def start_engine():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        encoding='utf-8', 
+        errors='ignore'
     )
 
 def stop_engine():
@@ -57,7 +59,16 @@ def send_to_engine(command: str) -> str:
     try:
         engine_process.stdin.write(command + "\n")
         engine_process.stdin.flush()
-        return engine_process.stdout.readline()
+        
+        # Robust Read: Read until newline or EOF
+        # Fixes 8KB truncation issue on Windows
+        output = ""
+        while True:
+            chunk = engine_process.stdout.readline()
+            output += chunk
+            if not chunk or chunk.endswith('\n'):
+                break
+        return output
     except Exception as e:
         return f'{{"error": "{str(e)}"}}'
 
@@ -67,11 +78,104 @@ def health_check():
     status = "online" if engine_process and engine_process.poll() is None else "offline"
     return jsonify({"status": status, "env": "cloud" if RAILWAY_ENVIRONMENT else "local"})
 
+# --- SEMANTIC BRAIN ---
+CORTEX = {}
+def load_cortex():
+    global CORTEX
+    if os.path.exists("cortex.json"):
+        print("Loading Cortex (Semantic Brain)...")
+        with open("cortex.json", 'r') as f:
+            CORTEX = json.load(f)
+        print(f"Cortex Loaded: {len(CORTEX)} concepts.")
+    else:
+         print("Cortex not found. Semantic search disabled (waiting for training).")
+
+# Load on startup
+load_cortex()
+
 @app.route("/search")
 def search():
-    q = request.args.get('q', '')
-    res_str = send_to_engine(q)
-    return res_str, 200, {'Content-Type': 'application/json'}
+    query = request.args.get('q', '')
+    if not query: return jsonify([])
+    
+    # 1. Primary Search
+    results = run_search(query)
+    
+    # 2. Semantic Expansion
+    # Search for synonyms if we have the brain loaded
+    expanded_results = []
+    
+    if CORTEX:
+        words = query.lower().split()
+        synonyms_used = []
+        for w in words:
+            if w in CORTEX:
+                # Top 2 synonyms
+                syns = CORTEX[w][:2] 
+                for syn in syns:
+                    if syn not in words and syn not in synonyms_used: 
+                        print(f"Expanding '{w}' -> '{syn}'")
+                        synonyms_used.append(syn)
+                        sub_res = run_search(syn)
+                        # Use local helper logic (duplicated for safety if helper not in scope, or better: define helper at top of search)
+                        # Actually, defining helper inside search() is fine as per previous edit.
+                        # Let's just manually unwrap here to match the logic I just wrote.
+                        hits = []
+                        if isinstance(sub_res, list): hits = sub_res
+                        elif isinstance(sub_res, dict) and 'results' in sub_res: hits = sub_res['results']
+
+                        for res in hits:
+                            # Tag title so user knows why it appeared
+                            if isinstance(res, dict) and 'title' in res:
+                                res['title'] = f"[Related to {syn}] " + res.get('title', 'Untitled')
+                                # Penalize Rank/Score
+                                if 'score' in res and isinstance(res['score'], (int, float)):
+                                    res['score'] *= 0.5 
+                                expanded_results.append(res)
+    
+    # Helper to extract list from response
+    def extract_hits(response):
+        if isinstance(response, list): return response
+        if isinstance(response, dict) and 'results' in response: return response['results']
+        return []
+
+    # 3. Merge Results (Dedupe by ID)
+    seen_ids = set()
+    final_output = []
+    
+    # Primary first
+    primary_hits = extract_hits(results)
+    for r in primary_hits:
+        if isinstance(r, dict) and r.get('id') not in seen_ids:
+            final_output.append(r)
+            seen_ids.add(r['id'])
+            
+    # Then Expanded (up to limit)
+    # expanded_results is already a flat list of hits populated below
+    for r in expanded_results:
+        if len(final_output) >= 60: break 
+        if r['id'] not in seen_ids:
+             final_output.append(r)
+             seen_ids.add(r['id'])
+            
+             seen_ids.add(r['id'])
+            
+    # Restore time_ms from primary search if available
+    total_time = 0
+    if isinstance(results, dict):
+        total_time = results.get('time_ms', 0)
+
+    return jsonify({"results": final_output, "time_ms": total_time})
+
+def run_search(q):
+    # Use persistent process to avoid loading 3.4GB index every time
+    try:
+        json_str = send_to_engine(q)
+        if not json_str: return []
+        return json.loads(json_str)
+    except Exception as e:
+        print(f"Search Error: {e}")
+        return []
 
 @app.route("/suggest")
 def suggest():

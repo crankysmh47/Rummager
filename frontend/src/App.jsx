@@ -79,6 +79,8 @@ function App() {
     return () => clearTimeout(timer)
   }, [query, apiBase])
 
+  const [isFocused, setIsFocused] = useState(false)
+
   // --- SEARCH ---
   const handleSearch = async (e) => {
     e?.preventDefault()
@@ -178,6 +180,8 @@ function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setTimeout(() => setIsFocused(false), 200)}
               placeholder="Search metadata, authors, or IDs..."
               className="w-full bg-transparent text-white px-4 py-4 outline-none text-lg placeholder:text-gray-600"
             />
@@ -188,7 +192,7 @@ function App() {
 
           {/* SUGGESTIONS */}
           <AnimatePresence>
-            {suggestions.length > 0 && (
+            {isFocused && suggestions.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}

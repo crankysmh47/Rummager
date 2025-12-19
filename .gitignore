@@ -61,5 +61,6 @@ clean_project.bat
 get-pip.py
 PARTNER_GUIDE.md
 !stress_test.py
-!stress_1.input
 !stress_2.input
+TECHNICAL_REPORT.md
+COMPLETE_SOURCE_CODE.md
