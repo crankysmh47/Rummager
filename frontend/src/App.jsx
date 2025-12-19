@@ -198,7 +198,14 @@ function App() {
                 {suggestions.map((s, i) => (
                   <div
                     key={i}
-                    onClick={() => { setQuery(s); setSuggestions([]); }}
+                    onClick={() => {
+                      // Multi-word support: replace only the last partial word
+                      const words = query.trim().split(/\s+/);
+                      words.pop(); // Remove partial
+                      words.push(s); // Add suggestion
+                      setQuery(words.join(" ") + " "); // Add space for next word
+                      setSuggestions([]);
+                    }}
                     className="px-6 py-3 hover:bg-rose-500/10 cursor-pointer text-gray-300 hover:text-white transition-colors border-b border-white/5 last:border-0"
                   >
                     {s}
@@ -207,6 +214,32 @@ function App() {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        {/* --- UPLOAD BUTTON --- */}
+        <div className="flex justify-center mb-8">
+          <label className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-all text-sm text-gray-400 hover:text-white hover:border-white/20">
+            <span className="text-xl font-thin">+</span>
+            <span>Add Document</span>
+            <input
+              type="file"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                  const res = await fetch(`${apiBase}/upload`, { method: 'POST', body: formData });
+                  const d = await res.json();
+                  alert(d.message || "Upload started");
+                } catch (err) {
+                  alert("Upload failed");
+                  console.error(err);
+                }
+              }}
+            />
+          </label>
         </div>
 
         {/* --- FILTERS --- */}
