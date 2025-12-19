@@ -1,7 +1,4 @@
 AETHER SEARCH ENGINE
-====================
-Submitted by: [Your Name]
-Course: [Course Name]
 
 OVERVIEW
 --------
