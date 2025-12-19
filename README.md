@@ -1,67 +1,64 @@
-# Aether: High-Performance C++ Search Engine
+AETHER SEARCH ENGINE
+====================
+Submitted by: [Your Name]
+Course: [Course Name]
 
-![Aether UI](https://via.placeholder.com/800x400?text=Aether+Search+UI)
+OVERVIEW
+--------
+Aether is a hybrid C++/Python search engine with a React frontend. 
+It uses custom binary indexing (Barrels) and a Semantic Association Model.
 
-**Aether** is a next-generation decentralized academic search engine designed for speed and scalability. It leverages a high-performance **C++ Core** for indexing and retrieval, coupled with a modern **React (Vite)** frontend for a seamless user experience.
+PREREQUISITES
+-------------
+1. G++ Compiler (MinGW for Windows or standard G++ for Linux)
+2. Python 3.9+
+3. Node.js (for building the frontend)
+4. Cloudflared (Optional, only for public access)
 
-## 🚀 Architecture
+QUICK START (WINDOWS)
+---------------------
+1. Double-click "run_aether.bat".
+   - This script automatically:
+     a) Sets up the Python virtual environment.
+     b) Compiles all C++ source files.
+     c) Builds the React frontend.
+     d) Starts the server at http://localhost:8000.
 
-```mermaid
-graph TD
-    User[User] -->|Interact| React[React Frontend (Port 5173)]
-    React -->|HTTP Requests| FastAPI[FastAPI Backend (Port 8000)]
-    FastAPI -->|Subprocess| CPP[C++ Search Engine Core]
-    
-    subgraph "Core Engine"
-        CPP -->|Reads| RAM[In-Memory Lexicon & Trie]
-        CPP -->|Seeks (O(1))| HDD[Barrel Files (On Disk)]
-        CPP -->|Ranks| PageRank[PageRank Graph]
-    end
-```
+MANUAL BUILD (LINUX/MAC)
+------------------------
+1. Compile C++:
+   g++ -O3 -std=c++17 searchengine.cpp -o searchengine
+   g++ -O3 -std=c++17 trie_builder.cpp -o trie_builder
+   g++ -O3 -std=c++17 invert.cpp -o invert
+   g++ -O3 -std=c++17 create_barrels.cpp -o create_barrels
+   g++ -O3 -std=c++17 add_document.cpp -o add_document
 
-## ✨ Key Features
+2. Frontend:
+   cd frontend && npm install && npm run build && cd ..
+   mkdir static
+   cp -r frontend/dist/* static/
 
--   **Hybrid Indexing:** Inverted Index (Barrels) + Forward Index for rapid retrieval.
--   **Hot-Swap Architecture:** Update the dataset in real-time (Double Buffering) without downtime.
--   **Trie-Based Autocomplete:** Instant search suggestions as you type.
--   **Advanced Ranking:** Custom BM25 algorithm combined with PageRank centrality scores.
--   **Nebula UI:** A polished, animated interface using Glassmorphism and Framer Motion.
--   **Smart Queries:** Supports boolean logic, date sorting (`/date`), and category filtering (`/cat:cs.AI`).
+3. Run:
+   pip install flask flask-cors
+   python main.py
 
-## 🛠️ Setup & Installation
+MAKING IT ONLINE (PUBLIC ACCESS)
+--------------------------------
+To generate a public URL (e.g., https://random-name.trycloudflare.com) that 
+allows the teacher to access your locally running project from their device:
 
-### Prerequisites
--   **C++ Compiler** (g++ with C++17 support)
--   **Python 3.8+**
--   **Node.js & npm**
+1. Ensure the Aether project is already running (Step 1 above).
+2. Open a *new* terminal window (do not close the one running the engine).
+3. Type the following command:
 
-### Quick Start
-We provide a unified setup script to compile the backend and install frontend dependencies.
+   cloudflared tunnel --url http://localhost:8000
 
-```powershell
-./setup_project.bat
-```
+4. Copy the URL ending in ".trycloudflare.com" from the terminal output.
+   Share this URL for public access.
 
-### Manual Build
-**Backend:**
-```bash
-pip install fastapi uvicorn flask-cors
-g++ -O3 -std=c++17 searchengine.cpp -o searchengine.exe
-g++ -O3 -std=c++17 trie_builder.cpp -o trie_builder.exe
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## 🌐 Deployment (Remote Access)
-To expose your local instance to the world:
-1.  Run the backend locally: `uvicorn main:app --host 0.0.0.0 --port 8000`
-2.  Use **Cloudflare Tunnel** (Recommended) or **ngrok** to tunnel traffic to port 8000.
-3.  Set the switch in the UI to **"Server: Cloud"** or let "Auto" detect the latency.
-
-## 📄 License
-MIT License. Built by [Your Name] & [Partner Name].
+DIRECTORY STRUCTURE
+-------------------
+/cpp_src    - Low-level indexing and search algorithms
+/frontend   - React user interface
+main.py     - Python orchestration layer
+barrels/    - Binary index files (Generated automatically)
