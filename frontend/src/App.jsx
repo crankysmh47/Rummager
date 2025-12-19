@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Server, Cloud, Search, ArrowRight, ArrowLeft, Filter, Calendar } from 'lucide-react'
 
 // --- CONFIG ---
-const LOCAL_API = "http://localhost:8000"
+const LOCAL_API = import.meta.env.DEV ? "http://localhost:8000" : ""
 const CLOUD_API = "https://aether-engine.up.railway.app"
 const PAGE_SIZE = 20
 

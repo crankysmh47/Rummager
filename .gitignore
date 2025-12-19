@@ -42,7 +42,8 @@ __pycache__/
 !frontend/**/*.json
 
 # --- Barrels ---
-barrels/
+barrels/*
+!barrels/.keep
 barrels_FULL/
 
 # --- Build Artifacts ---

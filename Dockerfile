@@ -40,9 +40,11 @@ COPY main.py .
 # CAUTION: If data is 2.9M files, this COPY will be huge. 
 # Best practice: Mount data as a volume. But for "one-click" demo, we might copy specific bins.
 # We will copy everything not ignored by .dockerignore (which should exclude venv, etc)
-COPY *.bin ./
-COPY doc_metadata.txt ./
-COPY barrels/ ./barrels/
+# Copy all files (respecting .dockerignore)
+# This handles both:
+# 1. Local builds (where barrels/ contains data)
+# 2. GitHub/Railway builds (where barrels/ is empty but exists due to .keep)
+COPY . .
 
 # Copy Frontend Build from Stage 1 to 'static'
 COPY --from=frontend-builder /app/frontend/dist ./static
