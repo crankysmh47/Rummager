@@ -147,43 +147,60 @@ int main(int argc, char* argv[]) {
     fwdFile.close();
 
     // 5. UPDATE METADATA
-    ofstream metaFile(META_FILE, ios::app);
+    fstream metaFile(META_FILE, ios::in | ios::out | ios::ate); // Read/Write, Start at End
     if (metaFile) {
-        // Format: ID|Title|Authors|Category|Date
-        // We'll use the filename as title/ID reference
-        string filename = inputPath.substr(inputPath.find_last_of("/\\") + 1);
-        metaFile << newDocID << "|New Doc: " << filename << "|System Updater|New|2025-01-01" << endl;
+        // Check if last char is newline
+        if (metaFile.tellp() > 0) {
+            metaFile.seekg(-1, ios::end);
+            char c;
+            metaFile.get(c);
+            if (c != '\n') {
+                metaFile.clear(); // Clear eof/fail bits
+                metaFile.seekp(0, ios::end);
+                metaFile << endl;
+            }
+            metaFile.seekp(0, ios::end);
+        }
+
+        // Format: ID|Title|Authors|Category|Date|OriginalID(Implicit)
+        // Note: The metadata format expected by searchengine is:
+        // ID|Title|Authors|Category|Date (optional)|OriginalID (optional)
+        
+        string title = "New Document";
+        string authors = "System Updater";
+        string date = "2025-01-01";
+        string originalID = "new/" + to_string(newDocID);
+        string category = "New";
+
+        if (argc >= 3) title = argv[2];
+        if (argc >= 4) authors = argv[3];
+        if (argc >= 5) date = argv[4];
+        if (argc >= 6) originalID = argv[5];
+        
+        // Ensure format matches searchengine's parser:
+        // getline(ss, doc.originalID, '|');
+        // getline(ss, doc.title, '|');
+        // getline(ss, doc.authors, '|');
+        // getline(ss, doc.category, '|');
+        // getline(ss, doc.date, '|');
+        
+        // So we write: OriginalID|Title|Authors|Category|Date
+        // WAIT: searchengine.cpp parser (lines 135-140) implies:
+        // ID|Title|Authors|Category|Date
+        
+        // Let's check searchengine.cpp parser strictly:
+        // getline(ss, doc.originalID, '|');
+        // getline(ss, doc.title, '|');
+        // getline(ss, doc.authors, '|');
+        // getline(ss, doc.category, '|');
+        // getline(ss, doc.date, '|');
+        
+        // So output must be:
+        metaFile << originalID << "|" << title << "|" << authors << "|" << category << "|" << date << endl;
     }
     metaFile.close();
 
     cout << "Success! Document added." << endl;
-
-    // --- PHASE 3: HOT SWAPPING TRIGGER ---
-    cout << "--- Starting Hot-Swap Pipeline ---" << endl;
-    
-    // 1. Invert (Full Forward Index -> Inverted Index)
-    cout << "Running Invert..." << endl;
-    system(".\\INVERT.exe"); 
-    
-    // Note: The user environment has INVERT.exe (uppercase) in the file list.
-    // I should check exact name. list_dir showed INVERT.exe.
-    // Also "invert.cpp". I should maybe compile invert.cpp to invert.exe to be sure?
-    // list_dir showed "INVERT.exe" (194KB) and "invert.cpp".
-    // I previously compiled create_barrels which is create_barrels.exe.
-    // I will try to run INVERT.exe.
-    
-    // 2. Create Barrels (Staging)
-    string stagingDir = "C:\\Users\\Hank47\\Sem3\\Rummager\\barrels_staging";
-    string cmd = ".\\create_barrels.exe \"" + stagingDir + "\"";
-    cout << "Running Create Barrels (Staging)..." << endl;
-    system(cmd.c_str());
-
-    // 3. Create Signal File
-    ofstream signalFile("C:\\Users\\Hank47\\Sem3\\Rummager\\swap.signal");
-    signalFile << stagingDir; // Write staging path to signal
-    signalFile.close();
-    
-    cout << "Signal 'swap.signal' created. Search Engine should pick it up." << endl;
 
     return 0;
 }
